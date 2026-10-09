@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Devilization</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23200606'/%3E%3Cpath d='M7 6l5 9h8l5-9-2 12-5 4h-4l-5-4z' fill='%23c9242a'/%3E%3Crect x='12' y='15' width='2.5' height='2' fill='%23ffd040'/%3E%3Crect x='17.5' y='15' width='2.5' height='2' fill='%23ffd040'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud" class="hidden">
+      <div class="status">
+        <div class="hero-row">
+          <span class="hero-name">Imp</span>
+          <span class="level-badge">Lv 1</span>
+        </div>
+        <div class="bar health"><div class="fill" id="hp-fill"></div><span id="hp-text"></span></div>
+      </div>
+      <div class="top-right">
+        <div class="kills" id="kills"></div>
+        <div class="hint">Esc · Pause</div>
+      </div>
+      <div class="crosshair"></div>
+      <div id="bars"></div>
+      <div id="floaters"></div>
+      <div class="announce" id="announce">
+        <div class="announce-title" id="announce-title"></div>
+        <div class="announce-detail" id="announce-detail"></div>
+      </div>
+      <div class="vignette" id="vignette"></div>
+      <div class="lava-glow" id="lava-glow"></div>
+    </div>
+
+    <!-- Title -->
+    <div id="title-screen" class="overlay screen">
+      <div class="embers" id="embers"></div>
+      <div class="version">Milestone 1 · All sound is generated live in your browser</div>
+      <div class="panel">
+        <h1>DEVILIZATION</h1>
+        <p class="subtitle">Rise from Imp to Demon Lord</p>
+        <div class="menu">
+          <button id="play-btn">Enter Hell</button>
+        </div>
+        <dl class="controls" data-controls></dl>
+      </div>
+    </div>
+
+    <!-- Pause -->
+    <div id="pause-screen" class="overlay hidden">
+      <div class="panel">
+        <h2>Paused</h2>
+        <p class="subtitle">Click Resume to keep playing</p>
+        <div class="menu">
+          <button id="resume-btn">Resume</button>
+        </div>
+        <div class="options">
+          <label class="option">
+            <span>Look sensitivity</span>
+            <input type="range" id="sens" min="0.2" max="3" step="0.1" value="1" />
+            <output id="sens-value">1.0</output>
+          </label>
+          <label class="option">
+            <span>Invert vertical look</span>
+            <input type="checkbox" id="invert-y" />
+            <output id="invert-value">Off</output>
+          </label>
+          <label class="option">
+            <span>Sound volume</span>
+            <input type="range" id="sfx-volume" min="0" max="1" step="0.05" value="0.8" />
+            <output id="sfx-volume-value">80%</output>
+          </label>
+          <label class="option">
+            <span>Low graphics (faster)</span>
+            <input type="checkbox" id="low-graphics" />
+            <output id="graphics-value">Off</output>
+          </label>
+        </div>
+        <dl class="controls" data-controls></dl>
+      </div>
+    </div>
+
+    <!-- Death -->
+    <div id="death-screen" class="overlay hidden">
+      <div class="panel">
+        <h1 class="fallen">Banished to the pits</h1>
+        <p class="subtitle">You will claw your way back to the training ground.</p>
+        <button id="respawn-btn">Rise again</button>
+      </div>
+    </div>
+
+    <div id="fade" class="fade"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

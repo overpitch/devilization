@@ -16,7 +16,8 @@ A first-person action game that runs in the web browser. You are a low-ranking d
 | Progression | Level 1–50 from XP (unlocks powers). Rank from missions (unlocks planes). |
 | Goal | Reach level 50, descend to the 10th plane, and defeat the angel general. That makes you Demon Lord. |
 | After the ending | The game continues with endless generated missions. |
-| Death | Respawn at the current plane's hub. The current mission fails and you lose some gold; XP and items are kept. |
+| Death | Respawn at the current plane's hub. The current mission fails. You keep your gold, XP and items. |
+| Hazards | You're a hell demon: lava and fire can't hurt you (or your dog). Lava is thick, so wading through it is slow, and geysers throw you into the air. Only the angels' attacks do damage. |
 | Travel | Go back to any unlocked plane at any time. |
 | Save | Saved in the browser, so you can close the tab and come back later. |
 | Length | 3–5 hours to beat the general (about 20–30 minutes per plane). |
@@ -120,7 +121,7 @@ A general of the angel army, fought at the end of the angels' war camp. When the
 
 Each plane has its own look. Plane 1 is the one you described; the others are working ideas.
 
-1. **Lava plains:** an open plain with rivers of lava and geysers of fire.
+1. **Lava plains:** an open plain with rivers of lava and geysers of fire. Lava and fire burn angels but not demons.
 2. **Ash wastes**
 3. **Bone forest**
 4. **Sulfur swamps**
@@ -150,7 +151,7 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 
 ## Build milestones
 
-1. **Core feel:** first-person camera, plane 1 terrain (lava rivers, fire geysers), spiked-flail combat against a dummy angel, and the dog following and attacking.
+1. ✅ **Core feel:** first-person camera, plane 1 terrain (lava rivers, fire geysers), spiked-flail combat against chained training angels, and the dog following and attacking (bite and horn charge).
 2. **Hero and HUD:** name entry (demon and dog), health, XP, gold, leveling, fire breath and ground spikes.
 3. **First plane playable:** angel types, hub and ruler, the three mission types, weapon drops, treasure chest, death and respawn, saving.
 4. **Armory and gear:** weaponsmith, armorer, weapon variety, enchantments.
@@ -163,5 +164,6 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 - Names: the demon's boss on each plane, the angel general, and rank titles (above are placeholders).
 - How the dog unlocks its fire breath and horn charge (default: bite at the start, horn charge at level 5, fire breath at level 10).
 - Fire breath and spikes: cooldowns or a shared "hellfire" energy bar? (default: energy bar)
-- How much gold you lose on death (default: 10%).
 - Do demon troops fight alongside you outside war-front missions? (default: no; just you and the dog)
+- Should geysers launch you into the air? (default: yes, with no damage; they can carry you up onto high ledges)
+- Should lava slow you down? (default: yes, to about half speed)

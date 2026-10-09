@@ -1,0 +1,421 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #f2e2d0;
+  font-family: Georgia, 'Times New Roman', serif;
+  user-select: none;
+}
+
+#app canvas {
+  display: block;
+}
+
+/* ---------- HUD ---------- */
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#hud.hidden {
+  display: none;
+}
+
+.status {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 280px;
+}
+
+.hero-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.hero-name {
+  font-size: 18px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-shadow: 0 2px 4px #000;
+}
+
+.level-badge {
+  font-size: 13px;
+  padding: 1px 7px;
+  color: #1b0808;
+  background: #e0602a;
+  border-radius: 3px;
+}
+
+.bar {
+  position: relative;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid rgba(255, 200, 170, 0.25);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bar .fill {
+  height: 100%;
+  width: 100%;
+  transition: width 0.12s linear;
+}
+
+.bar.health .fill {
+  background: linear-gradient(#e2504a, #8a1610);
+}
+
+.bar span {
+  position: absolute;
+  inset: 0;
+  font-size: 11px;
+  line-height: 12px;
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+}
+
+.top-right {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  text-align: right;
+  text-shadow: 0 2px 4px #000;
+}
+
+.kills {
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+.hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #b89a86;
+}
+
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: rgba(255, 230, 210, 0.7);
+}
+
+/* Red edges of the screen when hurt. */
+.vignette {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(170, 0, 0, 0.75) 100%);
+}
+
+/* Orange haze from below while wading in lava. */
+.lava-glow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(to top, rgba(255, 110, 20, 0.55), transparent 45%);
+  transition: opacity 0.3s;
+}
+
+.enemy-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 60px;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 240, 200, 0.5);
+  border-radius: 2px;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.enemy-bar div {
+  height: 100%;
+  background: linear-gradient(#fff2b0, #d9a830);
+}
+
+/* Damage numbers */
+.floater {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: bold;
+  white-space: nowrap;
+  text-shadow: 0 2px 3px #000, 0 0 2px #000;
+  will-change: transform, opacity;
+}
+
+.floater.damage {
+  font-size: 18px;
+  color: #fff;
+}
+
+.floater.heavy {
+  font-size: 26px;
+  color: #ffb84a;
+}
+
+.floater.dog {
+  font-size: 16px;
+  color: #ff8a5a;
+}
+
+.floater.xp {
+  font-size: 17px;
+  color: #c9a6ff;
+}
+
+.announce {
+  position: absolute;
+  top: 18%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  opacity: 0;
+}
+
+.announce.show {
+  animation: announce 4s ease-out forwards;
+}
+
+.announce-title {
+  font-size: 40px;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: #ffb070;
+  text-shadow: 0 0 18px rgba(255, 80, 20, 0.6), 0 3px 0 #000;
+}
+
+.announce-detail {
+  margin-top: 6px;
+  font-size: 16px;
+  color: #f2e2d0;
+  text-shadow: 0 2px 3px #000;
+}
+
+@keyframes announce {
+  0% { opacity: 0; transform: scale(0.8); }
+  10% { opacity: 1; transform: scale(1.04); }
+  18% { transform: scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
+
+/* ---------- Overlays ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 2, 2, 0.72);
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+/* The title shows the world behind it, so dim less. */
+.overlay.screen {
+  background: radial-gradient(ellipse at center, rgba(10, 2, 2, 0.3), rgba(10, 2, 2, 0.85));
+}
+
+.panel {
+  text-align: center;
+  padding: 32px 40px;
+  max-width: 560px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 64px;
+  letter-spacing: 10px;
+  color: #c9242a;
+  text-shadow: 0 0 24px rgba(201, 36, 42, 0.5), 0 4px 0 #3a0608;
+}
+
+h2 {
+  margin: 0;
+  font-size: 36px;
+  letter-spacing: 4px;
+  color: #f0d8c0;
+  text-shadow: 0 3px 0 #000;
+}
+
+h1.fallen {
+  font-size: 44px;
+  letter-spacing: 4px;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  margin: 6px 0 28px;
+  color: #c0a090;
+  letter-spacing: 2px;
+}
+
+button {
+  font: inherit;
+  font-size: 20px;
+  letter-spacing: 2px;
+  padding: 12px 32px;
+  color: #f2e2d0;
+  background: #7d1418;
+  border: 2px solid #c9242a;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #9c1b20;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.menu button {
+  min-width: 220px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 28px auto 0;
+  max-width: 420px;
+  text-align: left;
+  font-size: 15px;
+}
+
+.controls dt {
+  color: #ffb070;
+  text-align: right;
+}
+
+.controls dd {
+  margin: 0;
+  color: #e0cbb8;
+}
+
+.options {
+  display: grid;
+  gap: 10px;
+  max-width: 420px;
+  margin: 24px auto 0;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: 1fr 140px 44px;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.option input[type='checkbox'] {
+  justify-self: start;
+  width: 18px;
+  height: 18px;
+  accent-color: #c9242a;
+}
+
+.option input[type='range'] {
+  width: 100%;
+  accent-color: #c9242a;
+}
+
+.option output {
+  color: #c0a090;
+  font-size: 14px;
+}
+
+/* Title: drifting embers and a flickering glow */
+.embers {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.embers span {
+  position: absolute;
+  bottom: -10px;
+  width: var(--size);
+  height: var(--size);
+  background: #ffb04a;
+  box-shadow: 0 0 6px 2px rgba(255, 120, 40, 0.6);
+  opacity: 0;
+  animation: ember linear infinite;
+}
+
+@keyframes ember {
+  0% { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: 0.9; }
+  80% { opacity: 0.6; }
+  100% { transform: translate(var(--drift), -105vh); opacity: 0; }
+}
+
+#title-screen h1 {
+  animation: title-glow 4s ease-in-out infinite;
+}
+
+@keyframes title-glow {
+  0%, 100% { text-shadow: 0 0 24px rgba(201, 36, 42, 0.5), 0 4px 0 #3a0608; }
+  50% { text-shadow: 0 0 40px rgba(255, 60, 40, 0.8), 0 4px 0 #3a0608; }
+}
+
+.version {
+  position: absolute;
+  bottom: 14px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(216, 190, 170, 0.55);
+}
+
+.fade {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1.2s ease-out;
+}
+
+.stats {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  padding: 4px 8px;
+  font: 12px/1.4 ui-monospace, Menlo, monospace;
+  color: #9fff9f;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 100;
+}
