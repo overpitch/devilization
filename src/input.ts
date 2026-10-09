@@ -81,6 +81,14 @@ export class Input {
     return this.pressed.has('Space');
   }
 
+  get breathHeld() {
+    return this.isDown('KeyF');
+  }
+
+  get spikesHeld() {
+    return this.isDown('KeyR');
+  }
+
   get sprintHeld() {
     return this.isDown('ShiftLeft', 'ShiftRight');
   }

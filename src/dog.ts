@@ -4,6 +4,8 @@ import type { GameContext } from './types';
 import { groundAt, isLava, LAVA_Y, moveBody } from './world';
 import { sfx, volumeAt } from './audio';
 import { dampAngle, smoothing } from './util';
+import { breatheFire } from './powers';
+import { UNLOCK } from './progression';
 
 const RUN_SPEED = 11;
 const CHARGE_SPEED = 18;
@@ -14,12 +16,15 @@ const BITE_TIME = 0.42;
 const BITE_COOLDOWN = 0.9;
 const BITE_DAMAGE = 9;
 const CHARGE_DAMAGE = 20;
+const BREATH_TIME = 1.3;
+const BREATH_COOLDOWN = 5;
+const BREATH = { range: 5.5, halfAngle: 0.35, dps: 14, rate: 70 };
 /** The dog leaps up ledges this tall without slowing down. */
 const STEP_UP = 2.05;
 /** Farther than this from you and it bounds back through a puff of fire. */
 const LEASH = 45;
 
-type State = 'follow' | 'attack' | 'bite' | 'windup' | 'charge';
+type State = 'follow' | 'attack' | 'bite' | 'windup' | 'charge' | 'breathe';
 
 const lambert = (color: number) => new THREE.MeshLambertMaterial({ color, flatShading: true });
 const glow = (color: number) => new THREE.MeshBasicMaterial({ color });
@@ -39,6 +44,7 @@ function part(parent: THREE.Object3D, mat: THREE.Material, w: number, h: number,
  * with its horns. It can't be hurt.
  */
 export class Dog {
+  name = 'Cinder';
   readonly pos = new THREE.Vector3();
   readonly radius = 0.5;
   yaw = 0;
@@ -55,6 +61,7 @@ export class Dog {
   private target: Angel | null = null;
   private biteCooldown = 0;
   private chargeCooldown = 2;
+  private breathCooldown = 1;
   private chargeHit = false;
   private readonly chargeDir = new THREE.Vector3();
   private vy = 0;
@@ -157,7 +164,12 @@ export class Dog {
     this.stateTime += dt;
     this.biteCooldown -= dt;
     this.chargeCooldown -= dt;
+    this.breathCooldown -= dt;
     const player = ctx.player;
+    // The dog grows with you: it hits as hard as you do, and learns new attacks at your levels.
+    const mult = player.damageMult;
+    const canCharge = player.level >= UNLOCK.dogCharge;
+    const canBreathe = player.level >= UNLOCK.dogFireBreath;
 
     // Join in on whatever angel you're fighting.
     const wanted = player.lastTarget;
@@ -200,9 +212,12 @@ export class Dog {
         const d = Math.hypot(dx, dz);
         const edge = d - target.radius - this.radius;
         faceYaw = Math.atan2(dx, dz);
-        if (edge > 4 && edge < 14 && this.chargeCooldown <= 0) {
+        if (canCharge && edge > 4 && edge < 14 && this.chargeCooldown <= 0) {
           this.setState('windup');
           sfx.charge(volumeAt(this.pos.distanceTo(player.pos)));
+        } else if (canBreathe && edge > 0.3 && edge < 4 && this.breathCooldown <= 0) {
+          this.setState('breathe');
+          sfx.dogBreath(volumeAt(this.pos.distanceTo(player.pos)));
         } else if (edge < 0.5) {
           if (this.biteCooldown <= 0) {
             this.setState('bite');
@@ -222,11 +237,25 @@ export class Dog {
           sfx.bite(volumeAt(this.pos.distanceTo(player.pos)));
           if (target.pos.distanceTo(this.pos) < target.radius + this.radius + 1.1) {
             const dir = new THREE.Vector3(target.pos.x - this.pos.x, 0, target.pos.z - this.pos.z).normalize();
-            this.damage(target, BITE_DAMAGE, dir, 2, ctx);
+            this.damage(target, BITE_DAMAGE * mult, dir, 2, ctx);
           }
         }
         if (this.stateTime > BITE_TIME) {
           this.biteCooldown = BITE_COOLDOWN;
+          this.setState(target ? 'attack' : 'follow');
+        }
+        break;
+      }
+      case 'breathe': {
+        // A gout of flame from the jaws.
+        if (target) faceYaw = Math.atan2(target.pos.x - this.pos.x, target.pos.z - this.pos.z);
+        const mouth = new THREE.Vector3(Math.sin(this.yaw) * 1.1, 1.05, Math.cos(this.yaw) * 1.1).add(this.pos);
+        const dir = target
+          ? new THREE.Vector3(target.pos.x - mouth.x, target.pos.y + 1 - mouth.y, target.pos.z - mouth.z).normalize()
+          : new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+        breatheFire(mouth, dir, { ...BREATH, dps: BREATH.dps * mult }, dt, ctx);
+        if (this.stateTime > BREATH_TIME) {
+          this.breathCooldown = BREATH_COOLDOWN;
           this.setState(target ? 'attack' : 'follow');
         }
         break;
@@ -251,7 +280,7 @@ export class Dog {
         ctx.fire.burst(new THREE.Vector3(this.pos.x, this.pos.y + 0.3, this.pos.z), 0xff6a1a, 1, 1, { gravity: -2, life: 0.4, size: 0.1 });
         if (target && !this.chargeHit && target.pos.distanceTo(this.pos) < target.radius + this.radius + 0.5) {
           this.chargeHit = true;
-          this.damage(target, CHARGE_DAMAGE, this.chargeDir, 9, ctx);
+          this.damage(target, CHARGE_DAMAGE * mult, this.chargeDir, 9, ctx);
           ctx.addShake(0.12);
           this.stateTime = CHARGE_TIME; // stop on impact
         }
@@ -313,7 +342,7 @@ export class Dog {
 
   private damage(target: Angel, amount: number, dir: THREE.Vector3, knockback: number, ctx: GameContext) {
     target.takeHit(amount, dir, knockback, ctx);
-    ctx.floatText(new THREE.Vector3(target.pos.x, target.pos.y + 2.3, target.pos.z), String(amount), 'dog');
+    ctx.floatText(new THREE.Vector3(target.pos.x, target.pos.y + 2.3, target.pos.z), String(Math.round(amount)), 'dog');
   }
 
   private animate(dt: number) {
@@ -330,6 +359,7 @@ export class Dog {
     let headPitch = Math.sin(this.time * 1.5) * 0.05;
     let jawOpen = this.state === 'follow' && run < 0.1 ? 0.15 + Math.sin(this.time * 9) * 0.08 : 0.05; // panting
     if (this.state === 'windup' || this.state === 'charge') headPitch = 0.45;
+    if (this.state === 'breathe') jawOpen = 0.8;
     if (this.state === 'bite') {
       const t = this.stateTime / BITE_TIME;
       headPitch = t < 0.45 ? -0.2 : 0.25;

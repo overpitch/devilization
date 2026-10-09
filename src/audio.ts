@@ -9,6 +9,7 @@ let ac: AudioContext | null = null;
 let sfxBus: GainNode | null = null;
 let noise: AudioBuffer | null = null;
 let ambience: GainNode | null = null;
+let breath: { gain: GainNode; filter: BiquadFilterNode } | null = null;
 let sfxVolume = 0.8;
 
 export function initAudio() {
@@ -27,6 +28,7 @@ export function initAudio() {
     const data = noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     startAmbience(ac);
+    breath = startBreathLoop(ac);
   }
   if (ac.state === 'suspended') void ac.resume();
 }
@@ -101,6 +103,27 @@ function startAmbience(a: AudioContext) {
   src.connect(low).connect(ambience).connect(sfxBus!);
   src.start();
   lfo.start();
+}
+
+/** The roar of your fire breath: always running, silent until you breathe. */
+function startBreathLoop(a: AudioContext) {
+  const src = a.createBufferSource();
+  src.buffer = noise;
+  src.loop = true;
+  const f = filter(a, 'bandpass', 500, 0.6);
+  const gain = a.createGain();
+  gain.gain.value = 0;
+  src.connect(f).connect(gain).connect(sfxBus!);
+  src.start();
+  return { gain, filter: f };
+}
+
+/** Fire breath on (true) or off. */
+export function setBreathing(on: boolean) {
+  if (!ac || !breath) return;
+  const t = ac.currentTime;
+  breath.gain.gain.setTargetAtTime(on ? 0.7 : 0, t, on ? 0.04 : 0.12);
+  breath.filter.frequency.setTargetAtTime(on ? 900 + Math.random() * 300 : 300, t, 0.08);
 }
 
 /** Ambient rumble level, 0..1 (louder near lava). */
@@ -284,6 +307,75 @@ export const sfx = {
       const s = t + i * 0.07;
       tone(a, 'sine', f, f, s, 0.6).connect(envelope(a, s, 0.08 * vol, 0.01, 0.6));
     });
+  },
+
+  levelUp() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    // A rising minor arpeggio over a low drone: an infernal fanfare.
+    [220, 261.6, 329.6, 440, 523.3].forEach((f, i) => {
+      const s = t + i * 0.09;
+      tone(a, 'sawtooth', f, f, s, 0.5).connect(filter(a, 'lowpass', 1800)).connect(envelope(a, s, 0.12, 0.01, i === 4 ? 0.9 : 0.35));
+    });
+    tone(a, 'sine', 55, 55, t, 1.4).connect(envelope(a, t, 0.4, 0.05, 1.3));
+  },
+
+  /** A new power: a deep gong. */
+  unlock() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    for (const [f, peak] of [[98, 0.5], [147, 0.25], [196, 0.15], [311, 0.08]] as const) {
+      tone(a, 'sine', f, f * 0.98, t, 2.5).connect(envelope(a, t, peak, 0.01, 2.4));
+    }
+  },
+
+  coin() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    const f = 1400 + Math.random() * 300;
+    tone(a, 'square', f, f, t, 0.05).connect(filter(a, 'lowpass', 4000)).connect(envelope(a, t, 0.06, 0.002, 0.05));
+    tone(a, 'square', f * 1.5, f * 1.5, t + 0.05, 0.12).connect(filter(a, 'lowpass', 4000)).connect(envelope(a, t + 0.05, 0.06, 0.002, 0.12));
+  },
+
+  /** Not enough hellfire. */
+  denied() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    tone(a, 'square', 110, 100, t, 0.18).connect(filter(a, 'lowpass', 600)).connect(envelope(a, t, 0.15, 0.005, 0.18));
+  },
+
+  /** The dog's burst of flame. */
+  dogBreath(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    const f = filter(a, 'bandpass', 700, 0.7);
+    noiseSource(a, t, 1.3).connect(f).connect(envelope(a, t, 0.45 * vol, 0.08, 1.2));
+  },
+
+  /** The ground cracking before spikes burst out. */
+  spikeRumble(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    noiseSource(a, t, 0.35).connect(filter(a, 'lowpass', 180, 2)).connect(envelope(a, t, 0.6 * vol, 0.2, 0.15));
+  },
+
+  /** Spikes tearing out of the ground. */
+  spikes(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'sine', 120, 40, t, 0.3).connect(envelope(a, t, 0.8 * vol, 0.003, 0.3));
+    noiseSource(a, t, 0.3).connect(filter(a, 'bandpass', 1200, 1)).connect(envelope(a, t, 0.5 * vol, 0.003, 0.25));
+    for (let i = 0; i < 5; i++) {
+      const s = t + i * 0.02;
+      tone(a, 'square', 1800 - i * 200, 600, s, 0.05).connect(filter(a, 'bandpass', 2000, 3)).connect(envelope(a, s, 0.06 * vol, 0.001, 0.05));
+    }
   },
 
   click() {

@@ -58,9 +58,22 @@ body {
   border-radius: 3px;
 }
 
+.rank-row {
+  margin-bottom: 6px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #d8b8a0;
+  text-shadow: 0 1px 3px #000;
+}
+
+.dog-name {
+  color: #ff9a6a;
+}
+
 .bar {
   position: relative;
   height: 16px;
+  margin-bottom: 5px;
   background: rgba(0, 0, 0, 0.55);
   border: 2px solid rgba(255, 200, 170, 0.25);
   border-radius: 3px;
@@ -75,6 +88,146 @@ body {
 
 .bar.health .fill {
   background: linear-gradient(#e2504a, #8a1610);
+}
+
+.bar.energy {
+  height: 11px;
+}
+
+.bar.energy .fill {
+  background: linear-gradient(#ffb030, #d0400a);
+}
+
+.bar.energy span {
+  font-size: 9px;
+  line-height: 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.bar.xp {
+  height: 6px;
+  margin-bottom: 3px;
+  border-width: 1px;
+}
+
+.bar.xp .fill {
+  background: linear-gradient(#b68cff, #6b3fc4);
+}
+
+.bar.hidden {
+  display: none;
+}
+
+.xp-text {
+  font-size: 11px;
+  color: #c9b8ec;
+  text-shadow: 0 1px 2px #000;
+}
+
+.gold {
+  font-size: 18px;
+  color: #ffd050;
+  letter-spacing: 1px;
+}
+
+.gold::before {
+  content: '';
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 7px;
+  background: #ffc830;
+  box-shadow: 0 0 6px rgba(255, 200, 48, 0.7);
+}
+
+/* Power slots along the bottom of the screen. */
+.powers {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+}
+
+.power {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid rgba(255, 120, 60, 0.6);
+  border-radius: 4px;
+  overflow: hidden;
+  text-shadow: 0 1px 2px #000;
+}
+
+.power-key {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 5px;
+  text-align: center;
+  font-weight: bold;
+  color: #1b0808;
+  background: #ff9a50;
+  border-radius: 3px;
+}
+
+.power-state {
+  font-size: 11px;
+  color: #c0a090;
+}
+
+.power.locked {
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(242, 226, 208, 0.45);
+}
+
+.power.locked .power-key {
+  background: #5a4a44;
+}
+
+.power.active {
+  border-color: #ffd050;
+  box-shadow: 0 0 12px rgba(255, 140, 40, 0.6);
+}
+
+.power-cooldown {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  background: #ff9a50;
+}
+
+.toast {
+  position: absolute;
+  top: 62%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 17px;
+  color: #ffd0b0;
+  text-shadow: 0 2px 3px #000;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.toast.show {
+  opacity: 1;
+}
+
+/* Orange heat at the bottom of the screen while breathing fire. */
+.breath-glow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 85%, rgba(255, 140, 30, 0.35), transparent 60%);
+  transition: opacity 0.15s;
 }
 
 .bar span {
@@ -177,9 +330,19 @@ body {
   color: #ff8a5a;
 }
 
+.floater.burn {
+  font-size: 15px;
+  color: #ffa040;
+}
+
 .floater.xp {
   font-size: 17px;
   color: #c9a6ff;
+}
+
+.floater.gold {
+  font-size: 16px;
+  color: #ffd050;
 }
 
 .announce {
@@ -193,6 +356,12 @@ body {
 
 .announce.show {
   animation: announce 4s ease-out forwards;
+}
+
+.announce.levelup .announce-title {
+  font-size: 48px;
+  color: #ffd050;
+  text-shadow: 0 0 20px rgba(255, 140, 30, 0.8), 0 3px 0 #5a1a08;
 }
 
 .announce-title {
@@ -246,22 +415,23 @@ body {
 
 h1 {
   margin: 0;
-  font-size: 64px;
-  letter-spacing: 10px;
+  /* Shrinks in narrow windows so the title never gets cut off. */
+  font-size: clamp(30px, 8.5vw, 64px);
+  letter-spacing: clamp(3px, 1.3vw, 10px);
   color: #c9242a;
   text-shadow: 0 0 24px rgba(201, 36, 42, 0.5), 0 4px 0 #3a0608;
 }
 
 h2 {
   margin: 0;
-  font-size: 36px;
+  font-size: clamp(24px, 5vw, 36px);
   letter-spacing: 4px;
   color: #f0d8c0;
   text-shadow: 0 3px 0 #000;
 }
 
 h1.fallen {
-  font-size: 44px;
+  font-size: clamp(28px, 6vw, 44px);
   letter-spacing: 4px;
   margin-bottom: 12px;
 }
@@ -297,6 +467,107 @@ button:hover {
 
 .menu button {
   min-width: 220px;
+}
+
+.menu.row {
+  flex-direction: row;
+  justify-content: center;
+}
+
+.menu.row button {
+  min-width: 0;
+}
+
+button.secondary {
+  font-size: 16px;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.5);
+  border-color: #8a5a4a;
+}
+
+button.secondary:hover {
+  background: rgba(60, 20, 10, 0.7);
+}
+
+button.hidden,
+.confirm.hidden {
+  display: none;
+}
+
+.button-sub {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #f0c0a0;
+}
+
+.confirm p {
+  margin: 20px 0 12px;
+  color: #ffd0b0;
+}
+
+.name-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+h2.second {
+  margin-top: 28px;
+}
+
+.name-row input {
+  font: inherit;
+  font-size: 20px;
+  width: min(280px, 55vw);
+  padding: 9px 14px;
+  color: #f2e2d0;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid #8a5a4a;
+  border-radius: 4px;
+  outline: none;
+  user-select: text;
+}
+
+.name-row input:focus {
+  border-color: #ff7a3a;
+}
+
+.error {
+  min-height: 1.4em;
+  margin: 12px 0;
+  font-size: 14px;
+  color: #ff7b6b;
+}
+
+.panel.intro {
+  max-width: 640px;
+}
+
+.story p {
+  margin: 0 0 14px;
+  font-size: 19px;
+  line-height: 1.5;
+  color: #f0d8c0;
+  text-shadow: 0 2px 4px #000;
+  opacity: 0;
+  animation: fade-in 1s ease-out forwards;
+}
+
+.story .name {
+  color: #ffb070;
+}
+
+#begin-btn {
+  margin-top: 10px;
+  opacity: 0;
+  animation: fade-in 0.8s ease-out forwards;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 
 .controls {

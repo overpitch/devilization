@@ -7,6 +7,10 @@ import type { GameContext } from './types';
 
 const MAX_HP = 70;
 const RESPAWN_TIME = 5;
+/** Seconds an angel keeps burning after the flames stop touching it. */
+const BURN_TIME = 2.5;
+/** How often burn damage shows as a floating number. */
+const BURN_NUMBER_EVERY = 0.35;
 const WHITE = new THREE.Color(0xfff4d0);
 
 const lambert = (color: number) => new THREE.MeshLambertMaterial({ color, flatShading: true });
@@ -59,11 +63,19 @@ export class Angel {
   private readonly lean = new THREE.Vector2();
   private readonly leanVel = new THREE.Vector2();
   private flash = 0;
-  private time = Math.random() * 10;
   private deadTime = 0;
   private readonly bar: HTMLDivElement;
   private readonly barFill: HTMLDivElement;
   private sinceHit = 99;
+  private burnTime = 0;
+  private burnDps = 0;
+  /** Burn damage not yet shown as a number. */
+  private burnShown = 0;
+  private burnNumberTimer = 0;
+  /** Seconds left stuck on ground spikes. */
+  private impaled = 0;
+  private hurtSoundTimer = 0;
+  private struggle = Math.random() * 10;
 
   constructor(scene: THREE.Scene, x: number, z: number, facing: number, barLayer: HTMLElement) {
     this.pos.set(x, groundAt(x, z, 0.3), z);
@@ -111,35 +123,85 @@ export class Angel {
     barLayer.appendChild(this.bar);
   }
 
+  /** A blow from a weapon, horns or teeth. The attacker shows the damage number. */
   takeHit(damage: number, dir: THREE.Vector3, knockback: number, ctx: GameContext) {
     if (!this.alive) return;
-    this.hp -= damage;
     this.flash = 1;
     this.sinceHit = 0;
     // Chained up, so a hit only rocks the body back.
     this.leanVel.x += dir.x * (2 + knockback);
     this.leanVel.y += dir.z * (2 + knockback);
-    const dist = this.pos.distanceTo(ctx.player.pos);
-    const chest = new THREE.Vector3(this.pos.x, this.pos.y + 1.3, this.pos.z);
+    const chest = this.chest();
     ctx.debris.burst(chest, 0xf4f0e6, 6, 3, { dir, size: 0.08, gravity: 3, life: 1.2 });
     ctx.fire.burst(chest, 0xffe27a, 8, 4, { dir, life: 0.35, size: 0.06 });
+    this.damage(damage, ctx, false);
+  }
+
+  /** Fire: `amount` now, and the angel keeps burning at `afterDps` for a while. */
+  burn(amount: number, afterDps: number, ctx: GameContext) {
+    if (!this.alive) return;
+    this.burnTime = BURN_TIME;
+    this.burnDps = Math.max(this.burnDps, afterDps);
+    this.burnShown += amount;
+    this.flash = Math.max(this.flash, 0.35);
+    this.damage(amount, ctx, true);
+  }
+
+  /** Run through by ground spikes: lifted up and held there, struggling. */
+  impale(damage: number, seconds: number, ctx: GameContext) {
+    if (!this.alive) return;
+    this.impaled = seconds;
+    this.flash = 1;
+    this.sinceHit = 0;
+    const chest = this.chest();
+    ctx.floatText(chest.clone().setY(chest.y + 1), String(Math.round(damage)), 'heavy');
+    ctx.fire.burst(chest, 0xffe27a, 20, 5, { life: 0.5, size: 0.08 });
+    ctx.debris.burst(chest, 0xf4f0e6, 15, 4, { gravity: 3, life: 1.5, size: 0.1 });
+    this.damage(damage, ctx, false);
+  }
+
+  private chest() {
+    return new THREE.Vector3(this.pos.x, this.pos.y + 1.3, this.pos.z);
+  }
+
+  private damage(amount: number, ctx: GameContext, quiet: boolean) {
+    this.hp -= amount;
+    const dist = this.pos.distanceTo(ctx.player.pos);
     if (this.hp <= 0) {
-      this.hp = 0;
-      this.alive = false;
-      this.deadTime = 0;
-      sfx.angelDie(volumeAt(dist));
-      ctx.fire.burst(chest, 0xfff4c0, 40, 5, { gravity: -3, life: 1.2, size: 0.12 });
-      ctx.fire.burst(chest, 0xffd04a, 25, 7, { life: 0.6, size: 0.08 });
-      ctx.debris.burst(chest, 0xf4f0e6, 30, 5, { gravity: 2, life: 2, size: 0.1 });
-      ctx.addShake(0.15);
-      ctx.onAngelKilled(this);
-    } else {
+      this.die(ctx, dist);
+    } else if (!quiet || this.hurtSoundTimer <= 0) {
       sfx.angelHurt(volumeAt(dist));
+      this.hurtSoundTimer = 0.6;
     }
   }
 
+  private die(ctx: GameContext, dist: number) {
+    this.hp = 0;
+    this.alive = false;
+    this.deadTime = 0;
+    this.burnTime = 0;
+    this.impaled = 0;
+    this.flushBurnNumber(ctx);
+    const chest = this.chest();
+    sfx.angelDie(volumeAt(dist));
+    ctx.fire.burst(chest, 0xfff4c0, 40, 5, { gravity: -3, life: 1.2, size: 0.12 });
+    ctx.fire.burst(chest, 0xffd04a, 25, 7, { life: 0.6, size: 0.08 });
+    ctx.debris.burst(chest, 0xf4f0e6, 30, 5, { gravity: 2, life: 2, size: 0.1 });
+    ctx.addShake(0.15);
+    ctx.onAngelKilled(this);
+  }
+
+  private flushBurnNumber(ctx: GameContext) {
+    if (this.burnShown >= 1) {
+      const at = this.chest();
+      at.y += 1;
+      ctx.floatText(at, String(Math.round(this.burnShown)), 'burn');
+    }
+    this.burnShown = 0;
+    this.burnNumberTimer = 0;
+  }
+
   update(dt: number, ctx: GameContext) {
-    this.time += dt;
     this.sinceHit += dt;
     const root = this.h.root;
     if (!this.alive) {
@@ -152,6 +214,28 @@ export class Angel {
       return;
     }
     if (root.scale.x < 1) root.scale.setScalar(Math.min(1, root.scale.x + dt * 2.5));
+    this.hurtSoundTimer -= dt;
+
+    // Burning: flames lick up the body and the damage keeps ticking.
+    if (this.burnTime > 0) {
+      this.burnTime -= dt;
+      if (Math.random() < dt * 25) {
+        const at = this.chest();
+        at.y += (Math.random() - 0.6) * 1.4;
+        ctx.fire.burst(at, Math.random() < 0.5 ? 0xff6a10 : 0xffb030, 1, 1, { gravity: -5, life: 0.5, size: 0.2, spread: 0.25 });
+      }
+      this.burnShown += this.burnDps * dt;
+      this.damage(this.burnDps * dt, ctx, true);
+      if (!this.alive) return;
+      if (this.burnTime <= 0) this.burnDps = 0;
+    }
+    this.burnNumberTimer += dt;
+    if (this.burnNumberTimer >= BURN_NUMBER_EVERY) this.flushBurnNumber(ctx);
+
+    // Impaled: lifted off the ground until the spikes sink back.
+    const lift = this.impaled > 0 ? Math.min(0.6, this.impaled * 3) : 0;
+    this.impaled = Math.max(0, this.impaled - dt);
+    this.tilt.position.y += (this.pos.y + lift - this.tilt.position.y) * Math.min(1, dt * 20);
 
     // The lean springs back upright.
     this.leanVel.x += (-this.lean.x * 60 - this.leanVel.x * 7) * dt;
@@ -161,7 +245,9 @@ export class Angel {
     this.tilt.rotation.set(this.lean.y * 0.6, 0, -this.lean.x * 0.6);
 
     // Struggling against the chains.
-    const t = this.time;
+    // Thrashes harder while burning or impaled.
+    this.struggle += dt * (this.impaled > 0 || this.burnTime > 0 ? 3 : 1);
+    const t = this.struggle;
     const h = this.h;
     h.armL.rotation.set(-3.25 + Math.sin(t * 2.3) * 0.12, 0, 0.5 + Math.sin(t * 3.1) * 0.08);
     h.armR.rotation.set(-3.25 + Math.sin(t * 2.7 + 1) * 0.12, 0, -0.5 - Math.sin(t * 2.9) * 0.08);
@@ -185,6 +271,7 @@ export class Angel {
     this.h.root.scale.setScalar(0.01);
     this.lean.set(0, 0);
     this.leanVel.set(0, 0);
+    this.tilt.position.y = this.pos.y;
     const chest = new THREE.Vector3(this.pos.x, this.pos.y + 1.2, this.pos.z);
     ctx.fire.burst(chest, 0xfff4c0, 30, 3, { gravity: -2, life: 0.8, size: 0.1, spread: 0.4 });
     sfx.angelAppear(volumeAt(this.pos.distanceTo(ctx.player.pos)));

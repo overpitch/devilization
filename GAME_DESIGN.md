@@ -152,7 +152,7 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 ## Build milestones
 
 1. ✅ **Core feel:** first-person camera, plane 1 terrain (lava rivers, fire geysers), spiked-flail combat against chained training angels, and the dog following and attacking (bite and horn charge).
-2. **Hero and HUD:** name entry (demon and dog), health, XP, gold, leveling, fire breath and ground spikes.
+2. ✅ **Hero and HUD:** name entry (demon and dog), health, hellfire, XP, gold, leveling, saving, fire breath and ground spikes; the dog's horn charge (level 5) and fire breath (level 10).
 3. **First plane playable:** angel types, hub and ruler, the three mission types, weapon drops, treasure chest, death and respawn, saving.
 4. **Armory and gear:** weaponsmith, armorer, weapon variety, enchantments.
 5. **Planes 2–9:** themes, ranks, travel between planes, size change and flight, size puzzles.
@@ -162,8 +162,7 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 ## Open questions (defaults are used until decided)
 
 - Names: the demon's boss on each plane, the angel general, and rank titles (above are placeholders).
-- How the dog unlocks its fire breath and horn charge (default: bite at the start, horn charge at level 5, fire breath at level 10).
-- Fire breath and spikes: cooldowns or a shared "hellfire" energy bar? (default: energy bar)
+- XP and gold numbers: training angels give 10 XP and 2–4 gold; the full climb to level 50 takes about 61,000 XP. These will be balanced once missions exist.
 - Do demon troops fight alongside you outside war-front missions? (default: no; just you and the dog)
 - Should geysers launch you into the air? (default: yes, with no damage; they can carry you up onto high ledges)
 - Should lava slow you down? (default: yes, to about half speed)

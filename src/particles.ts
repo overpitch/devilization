@@ -20,6 +20,8 @@ export interface BurstOptions {
   size?: number;
   /** Spread of start positions around the origin, in meters. */
   spread?: number;
+  /** A velocity added to every particle (±20%), e.g. a jet of flame. */
+  push?: THREE.Vector3;
 }
 
 /**
@@ -52,7 +54,7 @@ export class Particles {
   }
 
   burst(origin: THREE.Vector3, color: number, count: number, speed: number, opts: BurstOptions = {}) {
-    const { dir, gravity = 16, life = 0.7, size = 0.1, spread = 0 } = opts;
+    const { dir, gravity = 16, life = 0.7, size = 0.1, spread = 0, push } = opts;
     this.c.set(color);
     for (let n = 0; n < count; n++) {
       const i = this.next;
@@ -63,6 +65,7 @@ export class Particles {
       p.vel.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize().multiplyScalar(speed * (0.4 + Math.random() * 0.6));
       if (gravity > 0) p.vel.y += 2;
       if (dir) p.vel.addScaledVector(dir, speed * 0.6);
+      if (push) p.vel.addScaledVector(push, 0.8 + Math.random() * 0.4);
       p.maxLife = p.life = life * (0.6 + Math.random() * 0.8);
       p.size = size * (0.6 + Math.random() * 0.8);
       p.gravity = gravity;

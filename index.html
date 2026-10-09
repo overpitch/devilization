@@ -15,14 +15,32 @@
     <div id="hud" class="hidden">
       <div class="status">
         <div class="hero-row">
-          <span class="hero-name">Imp</span>
-          <span class="level-badge">Lv 1</span>
+          <span class="hero-name" id="hero-name">Imp</span>
+          <span class="level-badge" id="level-badge">Lv 1</span>
         </div>
+        <div class="rank-row"><span id="rank-name">Imp</span> · <span class="dog-name" id="dog-name"></span></div>
         <div class="bar health"><div class="fill" id="hp-fill"></div><span id="hp-text"></span></div>
+        <div class="bar energy hidden" id="energy-bar"><div class="fill" id="energy-fill"></div><span>Hellfire</span></div>
+        <div class="bar xp"><div class="fill" id="xp-fill"></div></div>
+        <div class="xp-text" id="xp-text"></div>
       </div>
       <div class="top-right">
+        <div class="gold" id="gold"></div>
         <div class="kills" id="kills"></div>
         <div class="hint">Esc · Pause</div>
+      </div>
+      <div class="powers">
+        <div class="power locked" id="power-breath">
+          <span class="power-key">F</span>
+          <span class="power-name">Fire breath</span>
+          <span class="power-state" id="power-breath-state"></span>
+        </div>
+        <div class="power locked" id="power-spikes">
+          <span class="power-key">R</span>
+          <span class="power-name">Ground spikes</span>
+          <span class="power-state" id="power-spikes-state"></span>
+          <div class="power-cooldown" id="power-spikes-cooldown"></div>
+        </div>
       </div>
       <div class="crosshair"></div>
       <div id="bars"></div>
@@ -31,20 +49,56 @@
         <div class="announce-title" id="announce-title"></div>
         <div class="announce-detail" id="announce-detail"></div>
       </div>
+      <div class="toast" id="toast"></div>
       <div class="vignette" id="vignette"></div>
       <div class="lava-glow" id="lava-glow"></div>
+      <div class="breath-glow" id="breath-glow"></div>
     </div>
 
     <!-- Title -->
     <div id="title-screen" class="overlay screen">
       <div class="embers" id="embers"></div>
-      <div class="version">Milestone 1 · All sound is generated live in your browser</div>
+      <div class="version">Milestone 2 · All sound is generated live in your browser</div>
       <div class="panel">
         <h1>DEVILIZATION</h1>
         <p class="subtitle">Rise from Imp to Demon Lord</p>
         <div class="menu">
-          <button id="play-btn">Enter Hell</button>
+          <button id="continue-btn" class="hidden">Continue<span class="button-sub" id="continue-sub"></span></button>
+          <button id="new-game-btn">New Game</button>
         </div>
+        <div class="confirm hidden" id="confirm">
+          <p id="confirm-text"></p>
+          <div class="menu row">
+            <button id="confirm-yes-btn">Start over</button>
+            <button id="confirm-no-btn" class="secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Name your demon and your dog -->
+    <div id="name-screen" class="overlay screen hidden">
+      <form class="panel" id="name-form" autocomplete="off">
+        <h2>Name your demon</h2>
+        <div class="name-row">
+          <input id="name-input" maxlength="16" spellcheck="false" placeholder="Your demon's name" />
+          <button type="button" class="secondary" id="random-name-btn">Random</button>
+        </div>
+        <h2 class="second">Name your hellhound</h2>
+        <div class="name-row">
+          <input id="dog-input" maxlength="16" spellcheck="false" placeholder="Your dog's name" />
+          <button type="button" class="secondary" id="random-dog-btn">Random</button>
+        </div>
+        <p class="error" id="name-error"></p>
+        <button type="submit">Continue</button>
+      </form>
+    </div>
+
+    <!-- Intro -->
+    <div id="intro-screen" class="overlay screen hidden">
+      <div class="panel intro">
+        <div class="story" id="story"></div>
+        <button id="begin-btn">Rise</button>
         <dl class="controls" data-controls></dl>
       </div>
     </div>
@@ -53,9 +107,10 @@
     <div id="pause-screen" class="overlay hidden">
       <div class="panel">
         <h2>Paused</h2>
-        <p class="subtitle">Click Resume to keep playing</p>
-        <div class="menu">
+        <p class="subtitle">Your progress is saved</p>
+        <div class="menu row">
           <button id="resume-btn">Resume</button>
+          <button id="quit-btn" class="secondary">Quit to title</button>
         </div>
         <div class="options">
           <label class="option">
@@ -87,7 +142,7 @@
     <div id="death-screen" class="overlay hidden">
       <div class="panel">
         <h1 class="fallen">Banished to the pits</h1>
-        <p class="subtitle">You will claw your way back to the training ground.</p>
+        <p class="subtitle">You will claw your way back. You keep your gold and XP.</p>
         <button id="respawn-btn">Rise again</button>
       </div>
     </div>

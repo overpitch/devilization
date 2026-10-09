@@ -4,9 +4,11 @@ import type { FirstPersonCamera } from './camera';
 import type { SwingKind } from './viewmodel';
 import type { Angel } from './angel';
 import type { GameContext } from './types';
-import { groundAt, isLava, LAVA_Y, moveBody } from './world';
-import { sfx } from './audio';
-import { smoothing, wrapAngle } from './util';
+import { groundAt, heightAt, isLava, LAVA_Y, moveBody } from './world';
+import { setBreathing, sfx } from './audio';
+import { clamp, smoothing, wrapAngle } from './util';
+import { breatheFire, type Breath } from './powers';
+import { MAX_LEVEL, RANKS, statsForLevel, UNLOCK, xpToNext } from './progression';
 
 const WALK_SPEED = 6;
 const SPRINT_SPEED = 9.5;
@@ -18,6 +20,20 @@ const GRAVITY = 26;
 const STEP_UP = 1.05;
 const REGEN_DELAY = 4;
 const REGEN_RATE = 6;
+
+/** Hellfire per second while breathing fire. */
+const BREATH_COST = 22;
+/** You can't start breathing again until the bar has this much back. */
+const BREATH_RESTART = 15;
+const BREATH: Breath = { range: 7.5, halfAngle: 0.38, dps: 30, rate: 110 };
+const SPIKE_COST = 35;
+export const SPIKE_COOLDOWN = 1.2;
+const SPIKE_DAMAGE = 45;
+/** How far away you can raise spikes. */
+const SPIKE_RANGE = 18;
+/** Hellfire per second coming back, once unused for a moment. */
+const ENERGY_REGEN = 16;
+const ENERGY_REGEN_DELAY = 0.7;
 
 interface SwingDef {
   /** Seconds the whole swing takes. */
@@ -39,8 +55,23 @@ const SWINGS: Record<SwingKind, SwingDef> = {
 const tmp = new THREE.Vector3();
 const fwd = new THREE.Vector3();
 
-/** The demon: moved in first person, fights with a spiked ball on a chain. */
+/** The demon: moved in first person, fights with a spiked ball on a chain, fire and spikes. */
 export class Player {
+  name = 'Imp';
+  level = 1;
+  /** XP toward the next level. */
+  xp = 0;
+  gold = 0;
+  rank = 0;
+  /** Hellfire: burned by fire breath and ground spikes. */
+  energy = 100;
+  maxEnergy = 100;
+  /** Multiplies all damage you deal. */
+  damageMult = 1;
+  breathing = false;
+  /** Seconds until spikes can be raised again. */
+  spikeCooldown = 0;
+
   readonly pos = new THREE.Vector3();
   readonly radius = 0.4;
   readonly eyeHeight = 1.85;
@@ -71,6 +102,15 @@ export class Player {
   private sizzleTimer = 0;
   private time = 0;
 
+  private sinceEnergyUse = 99;
+  /** Ran out of hellfire mid-breath: wait for F to be let go and the bar to refill a little. */
+  private breathSpent = false;
+  private aiming = false;
+  private readonly aimPoint = new THREE.Vector3();
+  private aimValid = false;
+  /** Locked powers only explain themselves once per key press. */
+  private lockedHintShown = { breath: false, spikes: false };
+
   private swing: { kind: SwingKind; time: number; struck: boolean } | null = null;
   private nextKind: SwingKind = 'sweep';
   private queued = false;
@@ -79,10 +119,58 @@ export class Player {
   ballAt: (() => THREE.Vector3) | null = null;
   onLand?: (speed: number) => void;
 
+  get rankName() {
+    return RANKS[this.rank];
+  }
+
+  get xpNeeded() {
+    return this.level >= MAX_LEVEL ? 0 : xpToNext(this.level);
+  }
+
+  /** Sets name, level and progress from a saved game. */
+  loadHero(name: string, level: number, xp: number, gold: number, rank: number) {
+    this.name = name;
+    this.level = clamp(Math.round(level), 1, MAX_LEVEL);
+    this.xp = xp;
+    this.gold = gold;
+    this.rank = clamp(rank, 0, RANKS.length - 1);
+    this.applyLevel();
+  }
+
+  private applyLevel() {
+    const s = statsForLevel(this.level);
+    this.maxHp = s.maxHp;
+    this.maxEnergy = s.maxEnergy;
+    this.damageMult = s.damage;
+  }
+
+  /** Adds XP. Returns the levels gained; each level up fully heals you. */
+  gainXp(amount: number): number {
+    if (this.level >= MAX_LEVEL) return 0;
+    this.xp += amount;
+    let gained = 0;
+    while (this.level < MAX_LEVEL && this.xp >= xpToNext(this.level)) {
+      this.xp -= xpToNext(this.level);
+      this.level++;
+      gained++;
+    }
+    if (this.level >= MAX_LEVEL) this.xp = 0;
+    if (gained > 0) {
+      this.applyLevel();
+      this.hp = this.maxHp;
+      this.energy = this.maxEnergy;
+    }
+    return gained;
+  }
+
   reset(x: number, z: number) {
     this.pos.set(x, groundAt(x, z, this.radius * 0.7), z);
     this.vel.set(0, 0, 0);
     this.hp = this.maxHp;
+    this.energy = this.maxEnergy;
+    this.breathing = false;
+    this.aiming = false;
+    this.spikeCooldown = 0;
     this.alive = true;
     this.deadTime = 0;
     this.grounded = true;
@@ -116,6 +204,7 @@ export class Player {
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 1.5);
     if (!this.alive) {
       this.deadTime += dt;
+      this.stopPowers(ctx);
       this.applyGravity(dt);
       return;
     }
@@ -124,7 +213,7 @@ export class Player {
     const move = input.moveVector();
     this.sprinting = input.sprintHeld && move.z > 0.3 && !this.swing;
     let speed = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
-    if (this.swing) speed *= 0.75;
+    if (this.swing || this.breathing) speed *= 0.75;
     if (this.inLava) speed *= LAVA_SLOW;
     cam.forward(fwd);
     const rightX = -fwd.z;
@@ -166,7 +255,113 @@ export class Player {
     this.sinceHurt += dt;
     if (this.sinceHurt > REGEN_DELAY) this.hp = Math.min(this.maxHp, this.hp + REGEN_RATE * dt);
 
-    this.updateSwing(dt, ctx, input, cam);
+    if (!this.breathing) this.updateSwing(dt, ctx, input, cam);
+    this.updatePowers(dt, ctx, input, cam);
+  }
+
+  /** Fire breath (hold F) and ground spikes (hold R to aim, let go to strike). */
+  private updatePowers(dt: number, ctx: GameContext, input: Input, cam: FirstPersonCamera) {
+    this.sinceEnergyUse += dt;
+    this.spikeCooldown = Math.max(0, this.spikeCooldown - dt);
+    if (this.sinceEnergyUse > ENERGY_REGEN_DELAY) {
+      this.energy = Math.min(this.maxEnergy, this.energy + ENERGY_REGEN * (this.maxEnergy / 100) * dt);
+    }
+
+    // ----- Fire breath -----
+    const wantBreath = input.breathHeld;
+    if (!wantBreath) {
+      this.lockedHintShown.breath = false;
+      if (this.energy >= BREATH_RESTART) this.breathSpent = false;
+    }
+    if (wantBreath && this.level < UNLOCK.fireBreath && !this.lockedHintShown.breath) {
+      this.lockedHintShown.breath = true;
+      ctx.toast(`Fire breath unlocks at level ${UNLOCK.fireBreath}`);
+    }
+    const canBreathe = wantBreath && this.level >= UNLOCK.fireBreath && !this.breathSpent && !this.swing && this.energy > 0;
+    if (canBreathe) {
+      this.energy -= BREATH_COST * dt;
+      this.sinceEnergyUse = 0;
+      if (this.energy <= 0) {
+        this.energy = 0;
+        this.breathSpent = true;
+      }
+      const look = cam.lookDir(tmp);
+      const origin = this.eye(new THREE.Vector3()).addScaledVector(look, 1);
+      origin.y -= 0.3;
+      breatheFire(origin, look, { ...BREATH, dps: BREATH.dps * this.damageMult }, dt, ctx);
+    }
+    if (canBreathe !== this.breathing) {
+      this.breathing = canBreathe;
+      setBreathing(canBreathe);
+    } else if (canBreathe && Math.random() < dt * 4) {
+      setBreathing(true); // keeps the roar flickering
+    }
+
+    // ----- Ground spikes -----
+    const wantAim = input.spikesHeld;
+    if (wantAim && this.level < UNLOCK.spikes) {
+      if (!this.lockedHintShown.spikes) {
+        this.lockedHintShown.spikes = true;
+        ctx.toast(`Ground spikes unlock at level ${UNLOCK.spikes}`);
+      }
+    } else if (wantAim) {
+      this.aiming = true;
+      this.aimValid = this.aimAtGround(cam);
+      ctx.spikes.aim(this.aimValid ? this.aimPoint : null, this.spikesReady);
+    } else if (this.aiming) {
+      // Let go: strike.
+      this.aiming = false;
+      ctx.spikes.aim(null, false);
+      if (!this.aimValid) {
+        // Looking at the sky: nothing to aim at.
+      } else if (!this.spikesReady) {
+        sfx.denied();
+        ctx.toast(this.spikeCooldown > 0 ? 'Not ready yet' : 'Not enough hellfire');
+      } else {
+        this.energy -= SPIKE_COST;
+        this.sinceEnergyUse = 0;
+        this.spikeCooldown = SPIKE_COOLDOWN;
+        ctx.spikes.cast(this.aimPoint, SPIKE_DAMAGE * this.damageMult, ctx);
+      }
+    }
+    if (!wantAim) this.lockedHintShown.spikes = false;
+  }
+
+  get spikesReady() {
+    return this.energy >= SPIKE_COST && this.spikeCooldown <= 0;
+  }
+
+  /** Finds where your gaze meets the ground (within range). */
+  private aimAtGround(cam: FirstPersonCamera) {
+    const eye = this.eye(new THREE.Vector3());
+    const look = cam.lookDir(new THREE.Vector3());
+    const step = 0.25;
+    for (let d = 1.5; d <= SPIKE_RANGE; d += step) {
+      const x = eye.x + look.x * d;
+      const y = eye.y + look.y * d;
+      const z = eye.z + look.z * d;
+      if (y <= heightAt(x, z)) {
+        this.aimPoint.set(x, y, z);
+        return true;
+      }
+    }
+    // Looking above the horizon: aim at the farthest ground straight ahead instead.
+    if (look.y > -0.05) {
+      const flat = Math.hypot(look.x, look.z) || 1;
+      const x = this.pos.x + (look.x / flat) * SPIKE_RANGE * 0.6;
+      const z = this.pos.z + (look.z / flat) * SPIKE_RANGE * 0.6;
+      this.aimPoint.set(x, heightAt(x, z), z);
+      return true;
+    }
+    return false;
+  }
+
+  /** Stops breathing and aiming (death, pause). */
+  stopPowers(ctx: GameContext) {
+    if (this.breathing) setBreathing(false);
+    this.breathing = false;
+    if (this.aiming) ctx.spikes.aim(null, false);
+    this.aiming = false;
   }
 
   private applyGravity(dt: number) {
@@ -240,7 +435,7 @@ export class Player {
       const dist = Math.hypot(dx, dz);
       if (dist > def.reach + a.radius || dy < -2 || dy > 3) continue;
       if (Math.abs(wrapAngle(Math.atan2(dx, dz) - cam.yaw)) > def.arc && dist > a.radius + 0.6) continue;
-      const damage = Math.round(def.damage * (0.85 + Math.random() * 0.3));
+      const damage = Math.round(def.damage * this.damageMult * (0.85 + Math.random() * 0.3));
       const dir = tmp.set(dx, 0, dz).normalize();
       a.takeHit(damage, dir, def.knockback, ctx);
       ctx.floatText(new THREE.Vector3(a.pos.x, a.pos.y + 2.3, a.pos.z), String(damage), kind === 'smash' ? 'heavy' : 'damage');
