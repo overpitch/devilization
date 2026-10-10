@@ -295,8 +295,8 @@ function buildTreasurePillar() {
   const tx = Math.floor(TREASURE.x);
   const tz = Math.floor(TREASURE.z);
   const base = heights[cell(Math.floor(TREASURE_GEYSER.x) + HALF, Math.floor(TREASURE_GEYSER.z) + HALF)];
-  // Keep the ground around it low, so nobody can jump up from a rock.
-  for (let z = tz - 2; z <= tz + 2; z++) {
+  // Keep the ground around it low, so nobody can jump up from a rock (a sky pillar is too tall to matter).
+  for (let z = tz - 2; lock !== 'sky' && z <= tz + 2; z++) {
     for (let x = tx - 2; x <= tx + 2; x++) {
       const c = cell(x + HALF, z + HALF);
       if (Math.abs(x + 0.5 - TREASURE_GEYSER.x) <= 1 && Math.abs(z + 0.5 - TREASURE_GEYSER.z) <= 1) continue;
@@ -304,6 +304,38 @@ function buildTreasurePillar() {
     }
   }
   fill(tx - 1, tz - 1, tx + 1, tz + 1, base + (lock === 'sky' ? 14 : 3), Kind.Spire);
+}
+
+/**
+ * Heaven's fortress on the last plane: thick white walls with battlements,
+ * tall corner towers, and a wide gate in the south wall.
+ */
+function buildFortress() {
+  const f = plane().finale?.fortress;
+  if (!f) return;
+  const cx = Math.floor(f.x);
+  const cz = Math.floor(f.z);
+  const floor = heights[cell(cx + HALF, cz + HALF)];
+  for (let z = cz - f.half; z <= cz + f.half; z++) {
+    for (let x = cx - f.half; x <= cx + f.half; x++) {
+      const ring = Math.max(Math.abs(x - cx), Math.abs(z - cz));
+      if (ring < f.half - 1) continue;
+      // The gate: a gap five blocks wide in the south wall.
+      if (z < cz && Math.abs(x - cx) <= 2 && Math.abs(z - cz) >= f.half - 1) {
+        fill(x, z, x, z, floor, Kind.Rock);
+        continue;
+      }
+      // Battlements along the outer edge.
+      const crenel = ring === f.half && (x + z) % 2 === 0 ? 1 : 0;
+      fill(x, z, x, z, floor + f.height + crenel, Kind.Spire);
+    }
+  }
+  // Corner towers, and gatehouse towers on either side of the gate.
+  const towers: [number, number][] = [
+    [cx - f.half, cz - f.half], [cx + f.half, cz - f.half], [cx - f.half, cz + f.half], [cx + f.half, cz + f.half],
+    [cx - 4, cz - f.half], [cx + 4, cz - f.half],
+  ];
+  for (const [tx, tz] of towers) fill(tx - 1, tz - 1, tx + 1, tz + 1, floor + f.height + 5, Kind.Spire);
 }
 
 /** Distance from a point to the line segment a-b. */
@@ -474,6 +506,7 @@ function generateTerrain() {
   }
 
   buildCity(rand);
+  buildFortress();
   buildLair();
   buildPortalFloor();
   buildTreasurePillar();

@@ -99,6 +99,21 @@ export interface PlaneDef {
   geyserColors: [number, number, number];
   scenery: { trees?: { count: number; color: number; style: 'dead' | 'bone' | 'swamp' }; bones?: number; crystals?: { count: number; color: number }; chains?: number };
   ruler: RulerDef;
+  /**
+   * The last plane: instead of three main missions, one battle against
+   * heaven's general inside a walled fortress.
+   */
+  finale?: {
+    general: string;
+    title: string;
+    /** Center and half-size (in blocks) of the fortress walls; the gate faces south. */
+    fortress: { x: number; z: number; half: number; height: number };
+    mission: MissionText;
+    /** What the general says when you storm in, at half health, and when beaten. */
+    taunt: string;
+    summonLine: string;
+    deathLine: string;
+  };
   missions: {
     war: MissionText & { defend: XZ; from: XZ };
     retrieve: MissionText & { camp: XZ; item: { name: string; look: 'crown' | 'gem'; color: number } };
@@ -880,6 +895,104 @@ export const PLANES: PlaneDef[] = [
         praise: 'Let the general wonder why nobody answers.',
         post: { x: 52, z: 45 },
         target: { kind: 'officer', label: 'Herald Sandalphon' },
+      },
+    },
+  },
+
+  {
+    index: 10,
+    name: 'The Tenth Plane',
+    title: "The Angels' War Camp",
+    level: 50,
+    power: 3.3,
+    seed: 10007,
+    terrain: { base: 1, amp: 0.8, freq: 0.9, spires: 10, boulders: 20 },
+    rivers: [
+      { along: 'z', center: (z) => -48 + 4 * Math.sin(z * 0.08), width: () => 4, from: -HALF, to: HALF, bridges: [-30, 10] },
+      { along: 'z', center: (z) => 52 + 4 * Math.sin(z * 0.08 + 1), width: () => 4, from: -HALF, to: HALF, bridges: [-30, 10] },
+    ],
+    lakes: [],
+    mesas: [],
+    geysers: [
+      { x: -24.5, z: -26.5 }, { x: 26.5, z: -30.5 }, { x: -36.5, z: 4.5 }, { x: 38.5, z: 2.5 }, { x: -60.5, z: 60.5 }, { x: 64.5, z: -60.5 },
+    ],
+    flatZones: [
+      // The fortress, and the angel camp outside it.
+      [0, 38, 27],
+      [32, -46, 7],
+      [-30, -46, 7],
+    ],
+    treasure: { x: 20.5, z: 18.5 },
+    treasureGeyser: { x: 26.5, z: -30.5 },
+    treasureLock: 'sky',
+    liquid: LAVA,
+    palette: {
+      ground: [0x8a7a68, 0x6a5a4a, 0x4a3e34],
+      rock: [0x5a5048, 0x4a423c, 0x3a342e],
+      vent: [0x8a2e0c, 0x6a220a, 0x4a1a0a],
+      spire: [0xece6d8, 0xd6cfbe, 0xb8b0a0],
+      cliff: [0x6a5a4a, 0x5a4a3e, 0x4a3c32],
+      spireGlow: 0.05,
+    },
+    sky: { top: '#1a1408', upper: '#5a4a28', near: '#c8a860', horizon: 0x9a7a48, bottom: '#2a1e10' },
+    fog: [30, 130],
+    hemi: [0xfff0c0, 0x5a3818, 2.4],
+    sun: [0xfff4d0, 2.0],
+    motes: { color: 0xffe8a0, rise: 0.6, size: 0.12 },
+    geyserColors: [0xff4a0a, 0xff8a1a, 0xffd04a],
+    scenery: { bones: 60 },
+    ruler: {
+      name: 'The Morningstar',
+      title: 'Lord of All Hell',
+      skin: 0xd8c8b8,
+      robe: 0x0a0608,
+      horns: 0x1a1210,
+      eyes: 0xfff0a0,
+      greeting:
+        'Prince of Hell. You have climbed every rung and fought through every plane. I am the Morningstar. Before you lies heaven’s war camp, and in it their general. Kill the general, and I will crown you Demon Lord.',
+      again: 'The general still breathes. Why are you standing here?',
+      allDone: 'Demon Lord. The planes still crawl with angels. Hunt them as you please; hell is yours.',
+      promotion: '',
+      chestHint: 'Heaven keeps a war chest atop the eastern tower of their camp. No ladder reaches it. Wings will.',
+    },
+    finale: {
+      general: 'Archangel Seraphiel',
+      title: 'General of the Heavenly Host',
+      fortress: { x: 0, z: 38, half: 20, height: 7 },
+      mission: {
+        id: 'general',
+        title: 'The Last Battle',
+        brief: 'Storm the war camp. Break through the gate, cut down the garrison, and kill Archangel Seraphiel, general of the heavenly host. Do this, and you will be Demon Lord.',
+        praise: 'It is done. Kneel... no. Stand. Demon Lords do not kneel.',
+      },
+      taunt: 'So hell sends its little champion. Come, then. I have burned greater demons than you.',
+      summonLine: 'Host of heaven, to me! Ten of you, now!',
+      deathLine: 'This... is not... the end of heaven...',
+    },
+    missions: {
+      war: {
+        id: 'gate',
+        title: 'The Gate',
+        brief: '',
+        praise: '',
+        defend: { x: 0, z: 16 },
+        from: { x: 0, z: 30 },
+      },
+      retrieve: {
+        id: 'war-chest',
+        title: 'The War Chest',
+        brief: '',
+        praise: '',
+        camp: { x: 32, z: -46 },
+        item: { name: 'War Banner', look: 'gem', color: 0xfff0a0 },
+      },
+      assassinate: {
+        id: 'quartermaster',
+        title: 'The Quartermaster',
+        brief: '',
+        praise: '',
+        post: { x: -30, z: -46 },
+        target: { kind: 'officer', label: 'Quartermaster' },
       },
     },
   },

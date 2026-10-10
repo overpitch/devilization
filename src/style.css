@@ -1008,3 +1008,48 @@ button:disabled {
 .panel.ruler {
   scrollbar-color: #7d1418 rgba(0, 0, 0, 0.3);
 }
+
+/* ---------- Phase 7: the general and the ending ---------- */
+
+.boss {
+  margin-top: 10px;
+}
+
+.boss.hidden {
+  display: none;
+}
+
+.boss-name {
+  font-size: 20px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #fff0c0;
+  margin-bottom: 4px;
+  text-shadow: 0 0 12px rgba(255, 220, 120, 0.6), 0 2px 3px #000;
+}
+
+.bar.boss-bar {
+  height: 14px;
+  border-color: rgba(255, 220, 120, 0.7);
+}
+
+.bar.boss-bar .fill {
+  background: linear-gradient(#fff2b0, #c89a20);
+}
+
+h1.victory {
+  color: #ff5030;
+  text-shadow: 0 0 30px rgba(255, 80, 30, 0.7), 0 4px 0 #3a0608;
+  margin-bottom: 24px;
+}
+
+.ending-stats,
+.ending-buttons {
+  opacity: 0;
+  animation: fade-in 0.8s ease-out forwards;
+}
+
+.ending-stats {
+  max-width: 340px;
+  margin: 24px auto;
+}

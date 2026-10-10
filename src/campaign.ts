@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createHumanoid, setFlash, type Humanoid } from './character';
 import { Fighter, type FighterKind, type SpawnOptions } from './fighter';
 import { buildWeaponMesh, randomWeaponEnchant, WEAPON_ENCHANTS, weaponName, weaponPower, type Quality, type Weapon, type WeaponId } from './weapons';
-import { addCollider, findOpenSpot, groundAt, heightAt, planeGates, type Gate } from './world';
+import { addCollider, findOpenSpot, groundAt, heightAt, isLava, planeGates, type Gate } from './world';
 import { LAIR, PORTAL, SPAWN, THRONE } from './layout';
 import { ALL_PLANE_NAMES, BUILT_PLANES, PLANES, plane, type PlaneDef } from './planes';
 import { sfx } from './audio';
@@ -42,7 +42,7 @@ export interface Offer {
   /** Where a side mission takes place. */
   spot?: { x: number; z: number };
   /** Side missions: which template. */
-  template?: 'patrol' | 'captain' | 'gem';
+  template?: 'patrol' | 'captain' | 'gem' | 'assault';
 }
 
 interface Item {
@@ -63,6 +63,8 @@ interface Running {
   waveTimer: number;
   /** Nobody raised the alarm before the target died. */
   unseen: boolean;
+  /** War missions: where you hold, and where the angels come from. */
+  war: { defend: { x: number; z: number }; from: { x: number; z: number } } | null;
 }
 
 export interface Interactable {
@@ -94,6 +96,8 @@ export interface CampaignHooks {
   refreshDialog(): void;
   /** Go to another plane (1-based). */
   travel(index: number): void;
+  /** Heaven's general is dead: you are Demon Lord. */
+  victory(): void;
   save(): void;
 }
 
@@ -104,6 +108,7 @@ const SIDE_TEMPLATES = {
   patrol: { kind: 'war' as const, title: 'Cull the Patrol', brief: 'An angel patrol is sniffing around my lands. Hunt them down, every one.' },
   captain: { kind: 'assassinate' as const, title: 'Silence the Captain', brief: 'An angel captain is scouting my lands. Kill the captain. Unseen pays double.' },
   gem: { kind: 'retrieve' as const, title: 'Recover the Soul Gem', brief: 'One of my soul gems was taken by angels. Bring it back before they carry it off to heaven.' },
+  assault: { kind: 'war' as const, title: "Heaven's Counterattack", brief: 'Angels are marching on one of my outposts. Take my imps and hold it until their waves break.' },
 };
 
 const lambert = (color: number, emissive = 0) => new THREE.MeshLambertMaterial({ color, emissive, flatShading: true });
@@ -416,6 +421,10 @@ export class Campaign {
   /** This plane's three main missions, with rewards that grow deeper down. */
   private mainOffers(): Offer[] {
     const p = this.plane;
+    if (p.finale) {
+      const m = p.finale.mission;
+      return [{ id: `${p.index}:${m.id}`, title: m.title, kind: 'war', main: true, brief: m.brief, praise: m.praise, reward: { xp: 0, gold: 2000 } }];
+    }
     const m = p.missions;
     const reward = { xp: Math.round(150 * p.power), gold: Math.round(120 * p.power) };
     return [
@@ -431,7 +440,8 @@ export class Campaign {
 
   private sideOffers(level: number): Offer[] {
     if (this.offers.length === 0) {
-      const kinds = (['patrol', 'captain', 'gem'] as const).slice().sort(() => Math.random() - 0.5).slice(0, 2);
+      // Endless work: two of the four kinds of side mission, at fresh spots each time.
+      const kinds = (['patrol', 'captain', 'gem', 'assault'] as const).slice().sort(() => Math.random() - 0.5).slice(0, 2);
       for (const template of kinds) {
         const t = SIDE_TEMPLATES[template];
         const spot = findOpenSpot(SPAWN.x, SPAWN.z, 30);
@@ -533,7 +543,7 @@ export class Campaign {
     if (this.active) return;
     sfx.click();
     this.offers = this.offers.filter((x) => x !== o);
-    const run: Running = { offer: o, phase: 'go', fighters: [], target: null, item: null, allies: [], wave: 0, waveTimer: 0, unseen: true };
+    const run: Running = { offer: o, phase: 'go', fighters: [], target: null, item: null, allies: [], wave: 0, waveTimer: 0, unseen: true, war: null };
     this.active = run;
     const spawn = (kind: FighterKind, x: number, z: number, opts?: SpawnOptions) => {
       const f = this.hooks.spawn(this.deepen(kind), x, z, opts);
@@ -565,11 +575,17 @@ export class Campaign {
       spawn('footsoldier', t.x - 3, t.z + 5, { facing: 0.3 });
       spawn('archer', t.x - 4, t.z + 1, { facing: Math.PI });
       if (this.plane.index >= 3) spawn('priest', t.x + 2, t.z + 3, { facing: Math.PI });
+    } else if (o.main && this.plane.finale) {
+      this.garrison(run);
     } else if (o.main && o.kind === 'war') {
       // The imps and the waves arrive once you reach the battlefield.
+      run.war = { defend: m.war.defend, from: m.war.from };
     } else if (o.spot) {
       const { x, z } = o.spot;
-      if (o.template === 'patrol') {
+      if (o.template === 'assault') {
+        // Heaven's counterattack: they come from somewhere open, 25 meters off.
+        run.war = { defend: o.spot, from: this.approachFrom(o.spot) };
+      } else if (o.template === 'patrol') {
         const path = [new THREE.Vector3(x - 6, 0, z - 6), new THREE.Vector3(x + 6, 0, z - 6), new THREE.Vector3(x + 6, 0, z + 6), new THREE.Vector3(x - 6, 0, z + 6)];
         const n = 3 + Math.floor(Math.random() * 2);
         for (let i = 0; i < n; i++) spawn(i === n - 1 ? 'archer' : 'footsoldier', x - 6 + i * 1.5, z - 6, { patrol: path.slice(i % 4).concat(path.slice(0, i % 4)) });
@@ -600,6 +616,75 @@ export class Campaign {
     if (kind === 'footsoldier' && i >= 6 && Math.random() < 0.45) return 'knight';
     if (kind === 'archer' && i >= 7 && Math.random() < 0.5) return 'seraph';
     return kind;
+  }
+
+  /** Somewhere open about 25 m from a spot, for an attack wave to start. */
+  private approachFrom(spot: { x: number; z: number }) {
+    for (let tries = 0; tries < 24; tries++) {
+      const a = Math.random() * Math.PI * 2;
+      const x = spot.x + Math.sin(a) * 25;
+      const z = spot.z + Math.cos(a) * 25;
+      if (Math.max(Math.abs(x), Math.abs(z)) > 64 || isLava(x, z)) continue;
+      if (Math.abs(heightAt(x, z) - heightAt(spot.x, spot.z)) > 3) continue;
+      return { x, z };
+    }
+    return { x: spot.x, z: Math.min(64, spot.z + 25) };
+  }
+
+  /**
+   * The war camp's defenders: knights, priests and footsoldiers in the
+   * courtyard, archers on the walls, seraphs overhead, and the general
+   * waiting in the middle.
+   */
+  private garrison(run: Running) {
+    const fin = this.plane.finale!;
+    const f = fin.fortress;
+    const spawn = (kind: FighterKind, x: number, z: number, opts?: SpawnOptions) => {
+      const fighter = this.hooks.spawn(kind, x, z, opts);
+      run.fighters.push(fighter);
+      return fighter;
+    };
+    const general = spawn('general', f.x, f.z + 6, { facing: Math.PI, label: fin.general });
+    general.onSummon = () => this.hooks.announce(fin.general, `“${fin.summonLine}”`);
+    run.target = general;
+    // Guards at the gate and in the courtyard.
+    spawn('knight', f.x - 3, f.z - f.half + 4, { facing: Math.PI });
+    spawn('knight', f.x + 3, f.z - f.half + 4, { facing: Math.PI });
+    spawn('footsoldier', f.x - 8, f.z - 4, { facing: Math.PI });
+    spawn('footsoldier', f.x + 8, f.z - 4, { facing: Math.PI });
+    spawn('priest', f.x - 5, f.z + 4, { facing: Math.PI });
+    spawn('priest', f.x + 5, f.z + 4, { facing: Math.PI });
+    // Archers on the south wall, seraphs circling overhead.
+    for (const dx of [-10, 10]) spawn('archer', f.x + dx, f.z - f.half + 0.5, { facing: Math.PI });
+    spawn('seraph', f.x - 10, f.z + 10, { facing: Math.PI });
+    spawn('seraph', f.x + 10, f.z + 10, { facing: Math.PI });
+  }
+
+  /** Inside the war camp's walls? */
+  private insideFortress(pos: THREE.Vector3) {
+    const f = this.plane.finale?.fortress;
+    return !!f && Math.abs(pos.x - f.x) < f.half - 1.5 && Math.abs(pos.z - f.z) < f.half - 1.5;
+  }
+
+  /** The last battle: the general wakes when you storm the courtyard, and its death ends the war. */
+  private updateFinale(a: Running, ctx: GameContext) {
+    const fin = this.plane.finale!;
+    const g = a.target;
+    if (!g) return;
+    if (a.phase === 'go' && this.insideFortress(ctx.player.pos)) {
+      a.phase = 'fight';
+      g.becomeAlert(ctx, ctx.player, true);
+      this.hooks.announce(fin.general, `“${fin.taunt}”`);
+      sfx.warHorn();
+    }
+    if (!g.alive) {
+      this.progress.done.add(a.offer.id);
+      this.hooks.announce(fin.general, `“${fin.deathLine}”`);
+      this.hooks.reward(0, a.offer.reward.gold);
+      this.end();
+      this.hooks.victory();
+      this.hooks.save();
+    }
   }
 
   /** A stolen treasure: a crown or a gem, glowing and slowly turning. */
@@ -672,7 +757,8 @@ export class Campaign {
     // Stealth: once anyone raises the alarm, the kill isn't unseen any more.
     if (a.unseen && a.target?.alive && a.fighters.some((f) => f.everAlerted)) a.unseen = false;
 
-    if (a.offer.main && a.offer.kind === 'war') this.updateWar(dt, a);
+    if (a.offer.main && this.plane.finale) this.updateFinale(a, ctx);
+    else if (a.war) this.updateWar(dt, a);
     else if (a.phase === 'go') {
       if (a.target && !a.target.alive) this.objectiveDone(a, a.unseen ? `${a.target.label} is dead, and nobody saw you` : `${a.target.label} is dead`);
       else if (!a.target && !a.item && a.fighters.every((f) => !f.alive)) this.objectiveDone(a, 'The patrol is destroyed');
@@ -688,8 +774,8 @@ export class Campaign {
 
   /** The war front: your imps against three waves of angels marching on the place you defend. */
   private updateWar(dt: number, a: Running) {
-    if (a.phase === 'return') return;
-    const w = this.plane.missions.war;
+    if (a.phase === 'return' || !a.war) return;
+    const w = { ...a.war, title: a.offer.title };
     const d = w.defend;
     // Unit vector from the defended spot toward where the angels come from.
     const toward = new THREE.Vector2(w.from.x - d.x, w.from.z - d.z).normalize();
@@ -765,12 +851,15 @@ export class Campaign {
   // ---------- Travel ----------
 
   /** The Hellgate: every plane, and whether you can go there. */
-  travelDialog(rank: number): Dialog {
+  travelDialog(rank: number, level: number): Dialog {
+    // The war camp opens when the Abyss is cleared and you're level 50.
+    const abyss = PLANES[8];
+    const abyssDone = [abyss.missions.war.id, abyss.missions.retrieve.id, abyss.missions.assassinate.id].every((id) => this.progress.done.has(`9:${id}`));
     const cards: Dialog['cards'] = ALL_PLANE_NAMES.map((name, i) => {
       const index = i + 1;
       const here = index === this.plane.index;
       const built = index <= BUILT_PLANES;
-      const ranked = rank >= index - 1;
+      const ranked = index === 10 ? abyssDone && level >= 50 : rank >= index - 1;
       const def = PLANES[i];
       let button = 'Travel';
       let text = built ? `Ruled by ${def.ruler.name}, ${def.ruler.title}. Suggested level ${def.level}.` : 'The way down has not been opened yet.';
@@ -778,7 +867,7 @@ export class Campaign {
       else if (!built) button = 'Not yet';
       else if (!ranked) {
         button = 'Locked';
-        text += ` Reach the rank of ${RANKS[index - 1]} to go there.`;
+        text += index === 10 ? ' Finish the Abyss’s missions and reach level 50 to go there.' : ` Reach the rank of ${RANKS[index - 1]} to go there.`;
       }
       return {
         title: `${ordinal(index)} Plane: ${name}`,
@@ -912,8 +1001,15 @@ export class Campaign {
     if (a.phase === 'return') return { text: `Return to ${name}${a.item ? ` with the ${a.item.name}` : ''}`, at: ruler };
     const o = a.offer;
     const v = (x: number, z: number) => new THREE.Vector3(x, heightAt(x, z) + 2, z);
-    if (o.main && o.kind === 'war') {
-      const d = this.plane.missions.war.defend;
+    if (o.main && this.plane.finale) {
+      const fin = this.plane.finale;
+      const f = fin.fortress;
+      if (a.phase === 'go') return { text: 'Storm the war camp: through the south gate', at: v(f.x, f.z - f.half) };
+      const g = a.target;
+      return { text: `Kill ${fin.general}`, at: g ? g.pos.clone().setY(g.pos.y + 5) : null };
+    }
+    if (a.war) {
+      const d = a.war.defend;
       if (a.phase === 'go') return { text: `Go to the battlefield: ${o.title}`, at: v(d.x, d.z) };
       const left = a.fighters.filter((f) => f.alive).length;
       return { text: left > 0 ? `Hold the line: wave ${a.wave} of 3 (${left} left)` : `Hold the line: wave ${a.wave + 1} of 3 is coming`, at: v(d.x, d.z) };

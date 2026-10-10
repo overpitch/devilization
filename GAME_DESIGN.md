@@ -6,7 +6,7 @@ A first-person action game that runs in the web browser. You are a low-ranking d
 
 | Area | Decision |
 |---|---|
-| Platform | Web browser on computers (Chrome, Edge, Safari), keyboard and mouse or trackpad. |
+| Platform | Web browser on computers (Chrome, Edge, Safari) with keyboard and mouse or a controller, and Microsoft Edge on Xbox. |
 | Tech | Three.js + Vite + TypeScript. Proven parts are copied from Evil One and adapted. |
 | Camera | First person. You see your clawed hands and your weapon. |
 | Art style | Blocky, Minecraft-like, with models built from code (no external art). The world is solid: no digging or building. |
@@ -159,8 +159,10 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 4. ✅ **Armory and gear:** the armory in the pause menu (weaponsmith, armorer, selling), eight weapons including the longbow and javelins, three kinds of armor, three weapon and four armor enchantments, and natural armor at level 50.
 5. ✅ **Planes 2–5:** travel between planes (descending, and going back up), promotions through the ranks, and four new planes (ash wastes, bone forest, sulfur swamps, obsidian city), each with its own look, ruler, missions and treasure chest.
 6. ✅ **Planes 6–9, size and flight:** four more planes (chain canyons, frozen hell, burning sky, the Abyss), changing size at level 30, flight at level 40, and puzzles that need you tiny or huge.
-7. **Plane 10 and the ending:** the general, Demon Lord ending, endless missions.
-8. **Polish:** music, sound, balancing, title screen.
+7. ✅ **Plane 10 and the ending:** the war camp fortress, the general (summons 10 angels at half health), the Demon Lord ending, and endless missions (side missions on every plane, including Heaven's Counterattack).
+8. **Controllers and Xbox:** play with a controller, including Microsoft Edge on Xbox: game controls, menus driven by the controller, lower graphics on Xbox, and Back that doesn't leave the game.
+9. **Two-player split screen:** a second demon (with its own dog) on a controller, sharing the screen side by side.
+10. **Polish:** music, sound, balancing, title screen.
 
 ## Open questions (defaults are used until decided)
 

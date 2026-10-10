@@ -12,7 +12,7 @@ import type { Foe, GameContext, HellBody } from './types';
  */
 
 export type Side = 'heaven' | 'hell';
-export type FighterKind = 'footsoldier' | 'archer' | 'priest' | 'officer' | 'knight' | 'seraph' | 'traitor' | 'imp';
+export type FighterKind = 'footsoldier' | 'archer' | 'priest' | 'officer' | 'knight' | 'seraph' | 'general' | 'traitor' | 'imp';
 
 interface KindDef {
   side: Side;
@@ -43,6 +43,8 @@ interface KindDef {
   blocks?: boolean;
   /** Flies above the ground and dives on its target. */
   flies?: boolean;
+  /** Heaven's general: leaps, volleys of light, and a host summoned at half health. */
+  boss?: boolean;
   halo?: number;
   horns?: number;
   cape?: number;
@@ -101,6 +103,13 @@ const KINDS: Record<FighterKind, KindDef> = {
     xp: 35, gold: ANGEL_GOLD,
     look: { skin: ANGEL_SKIN, shirt: 0xfff4d8, pants: 0xf0e6c8, boots: 0xd9b24a, eyes: 0xffe27a, glowingEyes: true, belt: 0xd9b24a, armor: 0xffe9a8 },
     weapon: 'spear', wings: true, halo: 0xfff4c0, flies: true,
+  },
+  general: {
+    side: 'heaven', name: 'Archangel General', hp: 1600, speed: 4.6, radius: 0.8, scale: 2.1,
+    attack: 'melee', damage: 20, reach: 2.2, windup: 0.65, recover: 0.6, cooldown: 1.1, keepAway: 0, sight: 45,
+    xp: 2000, gold: ANGEL_GOLD, drop: { id: 'sword', chance: 1, minQuality: 2, enchantChance: 1 },
+    look: { skin: ANGEL_SKIN, shirt: 0xf8f0d8, pants: 0xe8dcc0, boots: 0xd9b24a, eyes: 0xfff0a0, glowingEyes: true, belt: 0xd9b24a, armor: 0xf0d070, plume: 0xffffff },
+    weapon: 'sword', wings: true, halo: 0xfff0a0, cape: 0xffffff, boss: true,
   },
   imp: {
     side: 'hell', name: 'Imp', hp: 80, speed: 5, radius: 0.38, scale: 0.8,
@@ -245,7 +254,7 @@ export class Fighter implements Foe, HellBody {
   private dress(def: KindDef) {
     const h = this.h;
     if (def.weapon) {
-      const w = buildWeaponMesh(def.weapon);
+      const w = buildWeaponMesh(def.weapon, def.boss ? 'flame' : undefined);
       if (def.weapon === 'bow') {
         w.position.set(0, -0.64, 0);
         w.rotation.x = Math.PI / 2;
@@ -278,9 +287,10 @@ export class Fighter implements Foe, HellBody {
     if (def.wings) {
       const feather = lambert(0xf4f0e6);
       const tip = lambert(0xd8d0bc);
-      for (const side of [1, -1]) {
+      for (let k = 0; k < (def.boss ? 6 : 2); k++) {
+        const side = k % 2 === 0 ? 1 : -1;
         const wing = new THREE.Group();
-        wing.position.set(0.12 * side, 0.5, -0.18);
+        wing.position.set(0.12 * side, 0.5 - Math.floor(k / 2) * 0.22, -0.18 - Math.floor(k / 2) * 0.03);
         h.torso.add(wing);
         [
           { len: 1.0, y: 0.1, m: feather },
@@ -300,6 +310,7 @@ export class Fighter implements Foe, HellBody {
       const halo = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.035, 4, 12), new THREE.MeshBasicMaterial({ color: def.halo }));
       halo.rotation.x = Math.PI / 2;
       halo.position.y = 0.62;
+      if (def.boss) halo.scale.setScalar(1.6);
       if (this.kind === 'traitor') {
         // The halo he was paid with sits crooked on his horns.
         halo.rotation.y = 0.4;
@@ -357,7 +368,7 @@ export class Fighter implements Foe, HellBody {
       sfx.clang(volumeAt(this.pos.distanceTo(ctx.player.pos)));
     }
     this.flash = 1;
-    this.kb.addScaledVector(dir, knockback * 0.9);
+    this.kb.addScaledVector(dir, knockback * (this.def.boss ? 0.15 : 0.9));
     const chest = this.chest();
     if (this.side === 'heaven') {
       ctx.debris.burst(chest, 0xf4f0e6, 5, 3, { dir, size: 0.08, gravity: 3, life: 1.2 });
@@ -383,7 +394,7 @@ export class Fighter implements Foe, HellBody {
 
   impale(damage: number, seconds: number, ctx: GameContext) {
     if (!this.alive) return;
-    this.impaled = seconds;
+    this.impaled = this.def.boss ? 0 : seconds;
     this.flash = 1;
     this.action = 'none';
     const chest = this.chest();
@@ -402,7 +413,7 @@ export class Fighter implements Foe, HellBody {
   }
 
   canAssassinate(from: THREE.Vector3): boolean {
-    if (!this.alive || this.side !== 'heaven' || this.state === 'alert') return false;
+    if (!this.alive || this.side !== 'heaven' || this.state === 'alert' || this.def.boss) return false;
     const dx = from.x - this.pos.x;
     const dz = from.z - this.pos.z;
     if (Math.hypot(dx, dz) > this.radius + 2.2) return false;
@@ -577,7 +588,7 @@ export class Fighter implements Foe, HellBody {
     if (this.impaled > 0) {
       this.impaled -= dt;
     } else if (this.side === 'heaven' && this.state === 'guard') {
-      this.perceive(dt, ctx);
+      if (!this.def.boss) this.perceive(dt, ctx);
       // Turns toward something it half-noticed.
       if (this.suspicion > 0.3) faceYaw = Math.atan2(ctx.player.pos.x - this.pos.x, ctx.player.pos.z - this.pos.z);
       else if (this.patrol) {
@@ -614,7 +625,7 @@ export class Fighter implements Foe, HellBody {
         this.target = this.pickTarget(ctx);
       }
       const t = this.target;
-      if (this.side === 'heaven' && this.home.distanceTo(this.pos) > LEASH && (!t || t.pos.distanceTo(this.home) > LEASH)) {
+      if (this.side === 'heaven' && !this.def.boss && this.home.distanceTo(this.pos) > LEASH && (!t || t.pos.distanceTo(this.home) > LEASH)) {
         // Too far from its post: give up and go back.
         this.state = 'guard';
         this.suspicion = 0.4;
@@ -643,9 +654,149 @@ export class Fighter implements Foe, HellBody {
     this.animate(dt);
   }
 
+  // ---------- Heaven's general ----------
+
+  private bossCd = 2.5;
+  private summoned = false;
+  private special: 'summon' | 'volley' | null = null;
+  private leap: { from: THREE.Vector3; to: THREE.Vector3; t: number } | null = null;
+  /** Called when the general calls the host down at half health. */
+  onSummon?: () => void;
+
+  /**
+   * The general's fight: sword blows up close; from afar, a leap that lands
+   * with a shockwave, or a fan of light bolts. At half health, ten angels
+   * answer its call. Below a quarter, it fights faster.
+   */
+  private bossFight(dt: number, ctx: GameContext, t: HellBody): { x: number; z: number } {
+    const def = this.def;
+    const out = { x: 0, z: 0 };
+    const enraged = this.hp < this.maxHp * 0.25;
+    const vol = volumeAt(this.pos.distanceTo(ctx.player.pos));
+    if (this.leap) {
+      const L = this.leap;
+      L.t = Math.min(1, L.t + dt / 0.9);
+      this.pos.lerpVectors(L.from, L.to, L.t);
+      this.pos.y = groundAt(this.pos.x, this.pos.z, 0.5) + Math.sin(L.t * Math.PI) * 6;
+      if (L.t >= 1) this.land(ctx);
+      return out;
+    }
+    if (this.action === 'windup') {
+      this.actionTime += dt;
+      const wind = this.special === 'summon' ? 1.6 : this.special === 'volley' ? 0.8 : def.windup * (enraged ? 0.7 : 1);
+      if (this.actionTime >= wind) this.bossRelease(ctx, t);
+      return out;
+    }
+    if (this.action === 'recover') {
+      this.actionTime += dt;
+      if (this.actionTime >= def.recover * (enraged ? 0.6 : 1)) this.action = 'none';
+      return out;
+    }
+    this.bossCd -= dt * (enraged ? 1.7 : 1);
+    this.cooldown -= dt * (enraged ? 1.5 : 1);
+    if (!this.summoned && this.hp < this.maxHp / 2) {
+      this.summoned = true;
+      this.special = 'summon';
+      this.action = 'windup';
+      this.actionTime = 0;
+      this.onSummon?.();
+      sfx.warHorn();
+      return out;
+    }
+    const dx = t.pos.x - this.pos.x;
+    const dz = t.pos.z - this.pos.z;
+    const d = Math.hypot(dx, dz) || 1;
+    const edge = d - this.radius - t.radius;
+    if (this.bossCd <= 0 && d > 7) {
+      this.bossCd = 3 + Math.random() * 2;
+      if (Math.random() < 0.5) {
+        // Leap: up on six wings and down on top of you.
+        this.leap = { from: this.pos.clone(), to: new THREE.Vector3(t.pos.x - (dx / d) * 1.5, 0, t.pos.z - (dz / d) * 1.5), t: 0 };
+        sfx.wings(vol);
+        return out;
+      }
+      this.special = 'volley';
+      this.action = 'windup';
+      this.actionTime = 0;
+      return out;
+    }
+    if (edge < def.reach * 0.8) {
+      if (this.cooldown <= 0) {
+        this.special = null;
+        this.startWindup();
+      }
+      return out;
+    }
+    const speed = def.speed * (enraged ? 1.3 : 1);
+    out.x = (dx / d) * speed;
+    out.z = (dz / d) * speed;
+    return out;
+  }
+
+  private bossRelease(ctx: GameContext, t: HellBody) {
+    const vol = volumeAt(this.pos.distanceTo(ctx.player.pos));
+    const chest = this.chest();
+    if (this.special === 'summon') {
+      // Ten angels descend in columns of light around the general.
+      const host: FighterKind[] = ['knight', 'footsoldier', 'archer', 'seraph', 'priest', 'footsoldier', 'knight', 'archer', 'footsoldier', 'seraph'];
+      host.forEach((kind, i) => {
+        const a = (i / host.length) * Math.PI * 2;
+        const x = this.pos.x + Math.sin(a) * 7;
+        const z = this.pos.z + Math.cos(a) * 7;
+        const y = groundAt(x, z, 0.3);
+        for (let k = 0; k < 12; k++) ctx.fire.burst(new THREE.Vector3(x, y + k * 0.7, z), 0xfff4c0, 2, 1, { gravity: -2, life: 0.9, size: 0.18 });
+        ctx.summon(kind, x, z);
+      });
+      ctx.addShake(0.5);
+      sfx.heal(1);
+    } else if (this.special === 'volley') {
+      // Five bolts of light in a fan.
+      sfx.cast(vol);
+      const base = Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z);
+      const dist = Math.max(6, t.pos.distanceTo(this.pos));
+      for (let k = -2; k <= 2; k++) {
+        const a = base + k * 0.22;
+        const at = new THREE.Vector3(this.pos.x + Math.sin(a) * dist, t.pos.y + 1.2, this.pos.z + Math.cos(a) * dist);
+        ctx.projectiles.fire('bolt', chest, at, this.def.damage * 0.5 * this.damageMult, null);
+      }
+    } else {
+      this.release(ctx, t, t.pos.distanceTo(this.pos) - this.radius - t.radius);
+      return;
+    }
+    this.special = null;
+    this.action = 'recover';
+    this.actionTime = 0;
+  }
+
+  /** The leap comes down: a shockwave of light knocks down everything near. */
+  private land(ctx: GameContext) {
+    this.leap = null;
+    this.pos.y = groundAt(this.pos.x, this.pos.z, 0.5);
+    const at = this.pos.clone();
+    at.y += 0.3;
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      ctx.fire.burst(new THREE.Vector3(at.x + Math.sin(a) * 2.5, at.y, at.z + Math.cos(a) * 2.5), 0xffe27a, 3, 4, { life: 0.5, size: 0.12 });
+    }
+    ctx.debris.burst(at, 0x8a7a68, 30, 7, { size: 0.2, spread: 1 });
+    sfx.spikes(volumeAt(this.pos.distanceTo(ctx.player.pos)));
+    ctx.addShake(Math.max(0, 0.7 - this.pos.distanceTo(ctx.player.pos) * 0.04));
+    const victims: HellBody[] = [ctx.player, ctx.dog];
+    for (const f of ctx.fighters) if (f.side === 'hell' && f.alive) victims.push(f);
+    for (const v of victims) {
+      if (!v.alive) continue;
+      if (Math.hypot(v.pos.x - this.pos.x, v.pos.z - this.pos.z) < 4.5 + v.radius && Math.abs(v.pos.y - this.pos.y) < 2.5) {
+        v.takeDamage(this.def.damage * 1.2 * this.damageMult, ctx, { attacker: this });
+      }
+    }
+    this.action = 'recover';
+    this.actionTime = 0;
+  }
+
   /** Approaches, keeps its distance, and attacks. Returns the wanted velocity. */
   private fight(dt: number, ctx: GameContext, t: HellBody): { x: number; z: number } {
     const def = this.def;
+    if (def.boss) return this.bossFight(dt, ctx, t);
     this.cooldown -= dt;
     const dx = t.pos.x - this.pos.x;
     const dz = t.pos.z - this.pos.z;
@@ -756,6 +907,7 @@ export class Fighter implements Foe, HellBody {
 
   /** Walks, steering around lava (it burns angels), with knockback and gravity. */
   private move(dt: number, vx: number, vz: number) {
+    if (this.leap) return;
     if (this.def.flies) {
       this.flyMove(dt, vx, vz);
       return;
@@ -862,14 +1014,22 @@ export class Fighter implements Foe, HellBody {
       h.armL.rotation.set(-2.6 * t, 0, 0.3);
       h.armR.rotation.set(-2.6 * t, 0, -0.3);
     }
+    if (this.special === 'summon' && this.action === 'windup') {
+      h.armL.rotation.set(-2.9, 0, 0.4);
+      h.armR.rotation.set(-2.9, 0, -0.4);
+    } else if (this.special === 'volley' && this.action === 'windup') {
+      h.armL.rotation.set(-1.6, 0.4, 0);
+    }
     if (this.impaled > 0) {
       h.armL.rotation.set(-2.5 + Math.sin(this.gait * 3) * 0.4, 0, 0.6);
       h.armR.rotation.set(-2.5 + Math.cos(this.gait * 3) * 0.4, 0, -0.6);
     }
     for (const [i, w] of this.wings.entries()) {
-      const side = i === 0 ? 1 : -1;
+      const side = i % 2 === 0 ? 1 : -1;
       const spread = this.state === 'alert' ? 0.9 + Math.sin(this.gait * 1.5) * 0.15 : 0.35;
-      if (this.def.flies) w.rotation.set(0.1, (-1.1 + Math.sin(this.gait * 3 + i) * 0.5) * side, -0.2 * side);
+      const tier = Math.floor(i / 2);
+      if (this.def.boss) w.rotation.set(0.1, (-0.7 - tier * 0.25 + Math.sin(this.gait * 2 + tier) * 0.15) * side, (-0.2 + tier * 0.45) * side);
+      else if (this.def.flies) w.rotation.set(0.1, (-1.1 + Math.sin(this.gait * 3 + i) * 0.5) * side, -0.2 * side);
       else w.rotation.set(0.15, -spread * side, -0.3 * side);
     }
 

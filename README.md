@@ -31,6 +31,15 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 
 ## What's in so far
 
+### Phase 7
+
+- **The Angels' War Camp** (the Tenth Plane): a white stone fortress with battlements, corner towers and a gate, under a sky lit gold by heaven. The Hellgate opens on it once you've finished the Abyss's missions and reached level 50.
+- **The Morningstar** sits on the throne there and gives the last mission, **The Last Battle**: storm the gate, get past knights, priests, footsoldiers, archers on the walls and seraphs overhead, and kill **Archangel Seraphiel**, general of the heavenly host.
+- **The general:** a giant with six wings and a flaming sword. Sword blows up close; from a distance, a leap that lands with a shockwave, or a fan of five bolts of light. At half health it calls down **ten angels** in columns of light. Below a quarter health it fights faster. Its health bar sits at the top of the screen.
+- **The ending:** the general's death makes you **Demon Lord**, with an ending that names you and your hellhound and shows your level, angels slain and time in hell. Then keep playing or return to the title.
+- **Endless missions:** a new side mission, **Heaven's Counterattack** (hold an outpost with six imps against three waves), joins the others. Every ruler keeps offering two side missions at fresh spots forever, and their rewards grow with your level.
+- The Tenth Plane's treasure sits on top of a tower that only wings can reach.
+
 ### Phase 6
 
 - **Change size** (level 30): Z shrinks, X grows. **Tiny** is fast and nearly invisible to angels and fits through cracks, but hits weakly and gets hurt more. **Huge** hits harder and further, takes less damage and climbs 2-block ledges, but is slower and easy to spot, and smashes rubble by walking into it.

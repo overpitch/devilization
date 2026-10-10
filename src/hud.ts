@@ -63,6 +63,8 @@ export class Hud {
   onSettings?: (s: Settings) => void;
   onReturnToLair?: () => void;
   onArmoryOpen?: () => void;
+  onKeepPlaying?: () => void;
+  onEndingTitle?: () => void;
   onArmoryClose?: () => void;
   onArmoryTab?: (tab: ArmoryTab) => void;
   onRulerClose?: () => void;
@@ -124,6 +126,8 @@ export class Hud {
     click('respawn-btn', () => this.onRespawn?.());
     click('lair-btn', () => this.onReturnToLair?.());
     click('armory-btn', () => this.onArmoryOpen?.());
+    click('keep-playing-btn', () => this.onKeepPlaying?.());
+    click('ending-title-btn', () => this.onEndingTitle?.());
     click('armory-close-btn', () => this.onArmoryClose?.());
     for (const tab of document.querySelectorAll<HTMLButtonElement>('#armory-screen .tab')) {
       tab.addEventListener('click', () => {
@@ -369,6 +373,47 @@ export class Hud {
       }
       list.appendChild(el);
     }
+  }
+
+  /** The general's health bar at the top of the screen (null hides it). */
+  setBoss(name: string | null, fraction: number) {
+    this.set('boss', name ?? '', (v) => {
+      $('boss').classList.toggle('hidden', !v);
+      $('boss-name').textContent = v;
+    });
+    if (name) this.set('boss-hp', fraction.toFixed(3), (v) => ($('boss-fill').style.width = `${Number(v) * 100}%`));
+  }
+
+  /** The ending: your story as Demon Lord, and how you got there. */
+  showEnding(e: { name: string; dog: string; level: number; kills: number; seconds: number } | null) {
+    $('ending-screen').classList.toggle('hidden', !e);
+    this.hud.classList.toggle('hidden', !!e);
+    if (!e) return;
+    const n = `<span class="name">${esc(e.name)}</span>`;
+    const d = `<span class="name">${esc(e.dog)}</span>`;
+    const lines = [
+      `Heaven’s general falls, and the war camp burns behind ${n}.`,
+      `${d} howls from the top of the broken gate, and every plane of hell howls back.`,
+      'The Morningstar sets a crown of black iron on your horns. Once you crawled out of the pits as the lowliest Imp in hell.',
+      `Now ${n} is Demon Lord.`,
+    ];
+    $('ending-story').innerHTML = lines.map((l, i) => `<p style="animation-delay:${i * 1.1}s">${l}</p>`).join('');
+    const h = Math.floor(e.seconds / 3600);
+    const m = Math.floor((e.seconds % 3600) / 60);
+    $('ending-stats').innerHTML = [
+      ['Level', String(e.level)],
+      ['Angels slain', String(e.kills)],
+      ['Time in hell', h > 0 ? `${h} h ${m} min` : `${m} min`],
+    ]
+      .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`)
+      .join('');
+    const delay = `${lines.length * 1.1}s`;
+    $('ending-stats').style.animationDelay = delay;
+    (document.querySelector('.ending-buttons') as HTMLElement).style.animationDelay = delay;
+  }
+
+  get endingOpen() {
+    return !$('ending-screen').classList.contains('hidden');
   }
 
   get armoryOpen() {

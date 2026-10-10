@@ -27,6 +27,10 @@
       <div class="top-center">
         <div class="objective" id="objective"></div>
         <div class="carrying hidden" id="carrying"></div>
+        <div class="boss hidden" id="boss">
+          <div class="boss-name" id="boss-name"></div>
+          <div class="bar boss-bar"><div class="fill" id="boss-fill"></div></div>
+        </div>
       </div>
       <div class="top-right">
         <div class="gold" id="gold"></div>
@@ -79,7 +83,7 @@
     <!-- Title -->
     <div id="title-screen" class="overlay screen">
       <div class="embers" id="embers"></div>
-      <div class="version">Phase 6 · All sound is generated live in your browser</div>
+      <div class="version">Phase 7 · All sound is generated live in your browser</div>
       <div class="panel">
         <h1>DEVILIZATION</h1>
         <p class="subtitle">Rise from Imp to Demon Lord</p>
@@ -189,6 +193,19 @@
         <p class="speech" id="ruler-speech"></p>
         <div class="cards" id="ruler-cards"></div>
         <button id="ruler-close-btn" class="secondary">Leave</button>
+      </div>
+    </div>
+
+    <!-- The ending -->
+    <div id="ending-screen" class="overlay screen hidden">
+      <div class="panel intro">
+        <h1 class="victory">DEMON LORD</h1>
+        <div class="story" id="ending-story"></div>
+        <dl class="controls ending-stats" id="ending-stats"></dl>
+        <div class="menu row ending-buttons">
+          <button id="keep-playing-btn">Keep playing</button>
+          <button id="ending-title-btn" class="secondary">Title screen</button>
+        </div>
       </div>
     </div>
 

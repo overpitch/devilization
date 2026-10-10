@@ -61,6 +61,8 @@ export interface GameContext {
   addShake(amount: number): void;
   hitStop(seconds: number): void;
   onFoeKilled(foe: Foe): void;
+  /** Brings an angel into the fight, already hunting you (the general's summons). */
+  summon(kind: import('./fighter').FighterKind, x: number, z: number): Fighter;
   /** A short message near the middle of the screen (e.g. a power that's still locked). */
   toast(text: string): void;
 }

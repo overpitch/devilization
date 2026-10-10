@@ -134,6 +134,7 @@ const ctx: GameContext = {
     if (r.drop) campaign.dropWeapon(r.drop, foe.pos);
   },
   toast: (text) => hud.toast(text),
+  summon: (kind, x, z) => spawnFighter(kind, x, z, { alert: true }),
 };
 
 pickups.onCollect = (at, value) => {
@@ -175,6 +176,19 @@ const campaignHooks: CampaignHooks = {
     if (hud.rulerOpen) hud.showRuler(campaign.dialog(player.level, player.rank));
   },
   travel: (index) => travel(index),
+  victory: () => {
+    // Heaven's general is dead: you are Demon Lord.
+    player.rank = RANKS.length - 1;
+    sfx.unlock();
+    saveGame();
+    setTimeout(() => {
+      player.stopPowers(ctx);
+      if (document.pointerLockElement) document.exitPointerLock();
+      hud.showPause(false);
+      sfx.levelUp();
+      hud.showEnding({ name: player.name, dog: dog.name, level: player.level, kills, seconds: playTime });
+    }, 4000);
+  },
   save: () => saveGame(),
 };
 
@@ -332,7 +346,7 @@ function lockPointer() {
   if (testMode) return;
   input.requestLock();
   setTimeout(() => {
-    if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen) hud.showPause(true);
+    if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) hud.showPause(true);
   }, 1200);
 }
 
@@ -364,7 +378,7 @@ function openRuler() {
 /** The Hellgate's list of planes (shown in the same window as the ruler's dialog). */
 function openPortal() {
   player.stopPowers(ctx);
-  hud.showRuler(campaign.travelDialog(player.rank));
+  hud.showRuler(campaign.travelDialog(player.rank, player.level));
   if (document.pointerLockElement) document.exitPointerLock();
 }
 
@@ -409,6 +423,15 @@ hud.onQuit = () => {
   hud.fadeIn();
   hud.showTitle(loadSave());
 };
+hud.onKeepPlaying = () => {
+  hud.showEnding(null);
+  hud.announce('Demon Lord', 'Hell is yours. The rulers still have work for you.');
+  lockPointer();
+};
+hud.onEndingTitle = () => {
+  hud.showEnding(null);
+  hud.onQuit?.();
+};
 hud.onReturnToLair = () => {
   const can = campaign.canReturnToLair(ctx);
   if (!can.ok) {
@@ -440,7 +463,7 @@ hud.onSettings = (s) => {
 };
 input.onLockChange = (locked) => {
   if (locked) hud.showPause(false);
-  else if (phase === 'playing' && player.alive && !hud.rulerOpen && !hud.armoryOpen) {
+  else if (phase === 'playing' && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) {
     player.stopPowers(ctx);
     saveGame();
     hud.showPause(true);
@@ -449,7 +472,7 @@ input.onLockChange = (locked) => {
 window.addEventListener('beforeunload', saveGame);
 // Clicking the game while paused resumes it.
 renderer.domElement.addEventListener('click', () => {
-  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen) lockPointer();
+  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) lockPointer();
 });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && hud.rulerOpen) closeRuler();
@@ -539,7 +562,7 @@ function nearestInteractable(): Interactable | null {
 
 /** Advances the game by one frame of `realDt` seconds. */
 function tick(realDt: number) {
-  const playing = phase === 'playing' && (input.locked || testMode) && !hud.rulerOpen && !hud.armoryOpen;
+  const playing = phase === 'playing' && (input.locked || testMode) && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen;
   foes.length = 0;
   for (const a of trainingAngels) foes.push(a);
   for (const f of fighters) if (f.side === 'heaven') foes.push(f);
@@ -623,6 +646,8 @@ function tick(realDt: number) {
   for (const a of trainingAngels) a.updateBar(camera);
   for (const f of fighters) f.updateBar(camera, player.pos);
   if (phase === 'playing') {
+    const boss = fighters.find((f) => f.kind === 'general' && f.alive && f.state === 'alert');
+    hud.setBoss(boss ? boss.label : null, boss ? boss.hp / boss.maxHp : 0);
     const o = campaign.objective();
     hud.setObjective(o.text, o.at, camera, player.pos);
     hud.setWeapons(player.weapons, player.equipped, player.armor, player.armorReduction);
@@ -640,7 +665,7 @@ function render() {
   renderer.info.reset();
   renderer.clear();
   renderer.render(scene, camera);
-  if (phase === 'playing' && player.alive) {
+  if (phase === 'playing' && player.alive && !hud.endingOpen) {
     renderer.clearDepth();
     renderer.render(viewModel.scene, camera);
   }
