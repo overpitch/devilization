@@ -1,4 +1,4 @@
-import { SPIKE_COOLDOWN, type Player } from './player';
+import { BOLT_COOLDOWN, SPIKE_COOLDOWN, type Player } from './player';
 import { DIFFICULTIES, DIFFICULTY_ORDER, type Settings } from './settings';
 import { BESTIARY, TROPHIES, type TrophyRecord } from './trophies';
 import type { SaveData } from './save';
@@ -16,6 +16,7 @@ const CONTROLS: [string, string][] = [
   ['W A S D', 'Move'],
   ['Mouse', 'Look'],
   ['Click or J', 'Attack: swing, shoot or throw (click again to chain)'],
+  ['G', `Hurl a hellfire bolt (level ${UNLOCK.hellfireBolt})`],
   ['F (hold)', `Breathe fire (level ${UNLOCK.fireBreath})`],
   ['R (hold)', `Aim ground spikes, let go to strike (level ${UNLOCK.spikes})`],
   ['E', 'Talk, take, open'],
@@ -31,10 +32,11 @@ const CONTROLS: [string, string][] = [
 ];
 
 const PAD_CONTROLS =
-  'Controller: left stick move · right stick look · RT attack · LT breathe fire · RB ground spikes · A jump (twice to fly, hold to climb) · B sneak or sink · X talk, take, open · Y switch weapon · D-pad left/right shrink/grow · LB sprint · D-pad down drink a draught · View map · ☰ Menu pause';
+  'Controller: left stick move · right stick look · RT attack · Y hellfire bolt · LT breathe fire · RB ground spikes · A jump (twice to fly, hold to climb) · B sneak or sink · X talk, take, open · D-pad up switch weapon · D-pad left/right shrink/grow · LB sprint · D-pad down drink a draught · View map · ☰ Menu pause';
 
 /** Key labels for the keyboard and for a controller. */
 const KEYS = {
+  bolt: ['G', 'Y'],
   breath: ['F', 'LT'],
   spikes: ['R', 'RB'],
   size: ['Z X', '◀ ▶'],
@@ -87,6 +89,7 @@ export class Hud {
   /** Pause > Add Player 2 / Remove Player 2. */
   onTogglePlayer2?: () => void;
   onTrophiesOpen?: () => void;
+  onSave?: () => void;
   onMapClose?: () => void;
   onTrophiesClose?: () => void;
   onArmoryOpen?: () => void;
@@ -158,6 +161,7 @@ export class Hud {
     click('lair-btn', () => this.onReturnToLair?.());
     click('p2-btn', () => this.onTogglePlayer2?.());
     click('trophies-btn', () => this.onTrophiesOpen?.());
+    click('save-btn', () => this.onSave?.());
     click('trophies-close-btn', () => this.onTrophiesClose?.());
     click('map-close-btn', () => this.onMapClose?.());
     click('armory-btn', () => this.onArmoryOpen?.());
@@ -595,7 +599,7 @@ export class Hud {
 
   update(dt: number, player: Player, dogName: string, kills: number) {
     this.set('keys', String(this.padMode), () => {
-      for (const which of ['breath', 'spikes', 'size', 'fly'] as const) $(`power-${which}`).querySelector('.power-key')!.textContent = this.key(which);
+      for (const which of ['bolt', 'breath', 'spikes', 'size', 'fly'] as const) $(`power-${which}`).querySelector('.power-key')!.textContent = this.key(which);
       document.querySelector('#hud .hint')!.textContent = this.key('pause');
     });
     this.toastTimer -= dt;
@@ -612,7 +616,7 @@ export class Hud {
       this.hpText.textContent = `${hp} / ${player.maxHp}`;
     });
 
-    const hasPowers = player.level >= UNLOCK.fireBreath;
+    const hasPowers = player.level >= UNLOCK.hellfireBolt;
     this.set('energy-shown', String(hasPowers), (v) => this.energyBar.classList.toggle('hidden', v !== 'true'));
     this.set('energy', (player.energy / player.maxEnergy).toFixed(3), (v) => (this.energyFill.style.width = `${Number(v) * 100}%`));
 
@@ -625,6 +629,13 @@ export class Hud {
     this.set('kills', String(kills), (v) => (this.kills.textContent = kills > 0 ? `Angels slain: ${v}` : ''));
 
     // Power slots: locked (with the level they open at), ready, or in use.
+    const boltLocked = player.level < UNLOCK.hellfireBolt;
+    const boltState = boltLocked ? `Level ${UNLOCK.hellfireBolt}` : player.boltReady ? 'Ready' : player.boltCooldown > 0 ? '' : 'Need hellfire';
+    this.set('bolt-slot', `${boltLocked}|${boltState}`, () => {
+      $('power-bolt').classList.toggle('locked', boltLocked);
+      $('power-bolt-state').textContent = boltState;
+    });
+    this.set('bolt-cd', player.boltCooldown.toFixed(2), (v) => ($('power-bolt-cooldown').style.width = `${(Number(v) / BOLT_COOLDOWN) * 100}%`));
     const breathLocked = player.level < UNLOCK.fireBreath;
     const breathState = breathLocked ? `Level ${UNLOCK.fireBreath}` : player.breathing ? 'Burning' : 'Hold';
     this.set('breath-slot', `${breathLocked}|${player.breathing}|${breathState}`, () => {

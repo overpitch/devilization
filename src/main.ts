@@ -162,6 +162,10 @@ function applySettings(s: Settings) {
   renderer.setPixelRatio(low ? Math.min(window.devicePixelRatio, 1) * (IS_XBOX ? 0.75 : 1) : Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   world?.setShadows(!low);
+  // Low graphics: half the fire and dust, and no extra light from your breath.
+  fire.density = debris.density = low ? 0.5 : 1;
+  if (low) scene.remove(breathLight);
+  else scene.add(breathLight);
 }
 // Browsers only allow sound after the player interacts; start it on the first key or click.
 for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, () => initAudio(), { once: true });
@@ -208,8 +212,8 @@ const ctx: GameContext = {
     if (foe instanceof Fighter && foe.side === 'heaven') killsByKind[foe.kind] = (killsByKind[foe.kind] ?? 0) + 1;
     const xp = Math.round(r.xp * DIFFICULTIES[settings.difficulty].xp);
     const chest = new THREE.Vector3(foe.pos.x, foe.pos.y + 1.4, foe.pos.z);
-    // Ten coins burst out, whatever they're worth together.
-    if (r.gold > 0) pickups.spawnGold(chest, 10, r.gold / 10);
+    // The coins burst out: one per gold (up to ten, sharing the rest).
+    if (r.gold > 0) pickups.spawnGold(chest, Math.min(10, r.gold), r.gold / Math.min(10, r.gold));
     if (xp > 0) {
       floaters.spawn(chest.clone().setY(chest.y + 1.2), `+${xp} XP`, 'xp');
       awardXp(xp);
@@ -823,6 +827,14 @@ hud.onTrophiesOpen = () => {
 };
 hud.onTrophiesClose = closeTrophies;
 hud.onMapClose = closeMap;
+// Pause → Save game: saves right now, wherever you are (the game also saves on its own).
+hud.onSave = () => {
+  saveGame();
+  sfx.unlock();
+  hud.toast('Game saved');
+  document.getElementById('save-btn')!.textContent = 'Saved!';
+  setTimeout(() => (document.getElementById('save-btn')!.textContent = 'Save game'), 1500);
+};
 
 /** The full map of this plane, north up. */
 function openMap() {

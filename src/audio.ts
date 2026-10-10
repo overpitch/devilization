@@ -188,6 +188,24 @@ export const sfx = {
   },
 
   /** The ball thudding into the ground. */
+  /** Hurling a hellfire bolt: a rising whoosh. */
+  hurl() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    noiseSource(a, t, 0.35).connect(filter(a, 'bandpass', 700, 1.2)).connect(envelope(a, t, 0.35, 0.03, 0.3));
+    tone(a, 'sawtooth', 120, 260, t, 0.25).connect(filter(a, 'lowpass', 900)).connect(envelope(a, t, 0.12, 0.02, 0.22));
+  },
+
+  /** A hellfire bolt bursting. */
+  fireBurst(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'sine', 140, 45, t, 0.35).connect(envelope(a, t, 0.5 * vol, 0.005, 0.35));
+    noiseSource(a, t, 0.5).connect(filter(a, 'lowpass', 1600)).connect(envelope(a, t, 0.45 * vol, 0.005, 0.45));
+  },
+
   /** Glugging down a draught. */
   drink() {
     const a = ready();

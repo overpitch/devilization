@@ -30,9 +30,15 @@ const BREATH_COST = 22;
 /** You can't start breathing again until the bar has this much back. */
 const BREATH_RESTART = 15;
 const BREATH: Breath = { range: 7.5, halfAngle: 0.38, dps: 30, rate: 110 };
-const SPIKE_COST = 35;
-export const SPIKE_COOLDOWN = 1.2;
-const SPIKE_DAMAGE = 45;
+const SPIKE_COST = 50;
+export const SPIKE_COOLDOWN = 3.5;
+const SPIKE_DAMAGE = 30;
+/** The hellfire bolt (level 5): what it costs, how often, and how hard it burns. */
+const BOLT_COST = 22;
+export const BOLT_COOLDOWN = 1.6;
+const BOLT_DAMAGE = 22;
+const BOLT_BURN = 7;
+const BOLT_RADIUS = 2.4;
 /** How far away you can raise spikes. */
 const SPIKE_RANGE = 18;
 /** Hellfire per second coming back, once unused for a moment. */
@@ -79,6 +85,8 @@ export class Player {
   breathing = false;
   /** Seconds until spikes can be raised again. */
   spikeCooldown = 0;
+  /** Seconds until another hellfire bolt can be hurled. */
+  boltCooldown = 0;
 
   readonly pos = new THREE.Vector3();
   /** 0 for Player 1, 1 for Player 2 in split screen. */
@@ -390,6 +398,8 @@ export class Player {
   private updatePowers(dt: number, ctx: GameContext, input: Input, cam: FirstPersonCamera) {
     this.sinceEnergyUse += dt;
     this.spikeCooldown = Math.max(0, this.spikeCooldown - dt);
+    this.boltCooldown = Math.max(0, this.boltCooldown - dt);
+    if (input.boltPressed) this.hurlBolt(ctx, cam);
     if (this.sinceEnergyUse > ENERGY_REGEN_DELAY) {
       this.energy = Math.min(this.maxEnergy, this.energy + ENERGY_REGEN * (this.maxEnergy / 100) * dt);
     }
@@ -413,7 +423,7 @@ export class Player {
         this.breathSpent = true;
       }
       const look = cam.lookDir(tmp);
-      const origin = this.eye(new THREE.Vector3()).addScaledVector(look, 1);
+      const origin = this.eye(new THREE.Vector3()).addScaledVector(look, 1.4);
       origin.y -= 0.3;
       breatheFire(origin, look, { ...BREATH, dps: BREATH.dps * this.damageMult }, dt, ctx);
     }
@@ -720,6 +730,50 @@ export class Player {
    * Thrown into the air by a geyser. Fire can't burn a demon, so it does no
    * damage: it's a free ride up onto high ledges.
    */
+  get boltReady() {
+    return this.level >= UNLOCK.hellfireBolt && this.boltCooldown <= 0 && this.energy >= BOLT_COST;
+  }
+
+  /** Hurls a hellfire bolt where you look: it bursts on whatever it meets and sets angels near it burning. */
+  private hurlBolt(ctx: GameContext, cam: FirstPersonCamera) {
+    if (!this.alive) return;
+    if (this.level < UNLOCK.hellfireBolt) {
+      ctx.toast(`The hellfire bolt unlocks at level ${UNLOCK.hellfireBolt}`);
+      return;
+    }
+    if (this.boltCooldown > 0 || this.energy < BOLT_COST) {
+      sfx.denied();
+      ctx.toast(this.boltCooldown > 0 ? 'Not ready yet' : 'Not enough hellfire');
+      return;
+    }
+    this.energy -= BOLT_COST;
+    this.sinceEnergyUse = 0;
+    this.boltCooldown = BOLT_COOLDOWN;
+    const look = cam.lookDir(new THREE.Vector3());
+    const from = this.eye(new THREE.Vector3()).addScaledVector(look, 0.9);
+    from.y -= 0.25;
+    sfx.hurl();
+    const damage = BOLT_DAMAGE * this.damageMult;
+    const burn = BOLT_BURN * this.damageMult;
+    ctx.projectiles.hurl(from, look, (at) => {
+      ctx.fire.burst(at, 0xff6a10, 40, 7, { gravity: -3, life: 0.6, size: 0.18, spread: 0.6 });
+      ctx.fire.burst(at, 0xffd040, 20, 4, { life: 0.4, size: 0.12 });
+      ctx.debris.burst(at, 0x2a1a14, 12, 4, { size: 0.12 });
+      const dist = at.distanceTo(this.pos);
+      sfx.fireBurst(Math.max(0.2, 1 - dist / 40));
+      ctx.addShake(Math.max(0, 0.25 - dist * 0.01));
+      for (const f of ctx.foes) {
+        if (!f.alive) continue;
+        const d = Math.hypot(f.pos.x - at.x, f.pos.z - at.z);
+        if (d > BOLT_RADIUS + f.radius || at.y < f.pos.y - 1 || at.y > f.pos.y + 3) continue;
+        // Full force at the heart of the burst, half at its edge.
+        f.burn(damage * (1 - 0.5 * Math.min(1, d / BOLT_RADIUS)), burn, ctx);
+        this.lastTarget = f;
+        this.lastTargetTime = this.time;
+      }
+    });
+  }
+
   /** Drinks a Hellfire Draught: half your health back. */
   drink(ctx: GameContext) {
     if (!this.alive) return;

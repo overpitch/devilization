@@ -71,6 +71,11 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 - **Difficulty** (Pause → Difficulty): **Easy** (angels hit 40% softer and have 25% less health; you heal faster), **Normal** (angels hit 25% harder and have 20% more health than before), **Hard** (70% harder hits, 50% more health, slow healing, 25% more XP) or **Nightmare** (2.3× hits, twice the health, very slow healing, 50% more XP). Damage changes at once; angels' health changes for angels that appear afterwards.
 - **Trophies and bestiary** (Pause → Trophies): 19 trophies with progress, from First Blood to Demon Lord, announced as you earn them; and a bestiary of every kind of angel you've slain, with counts. (Kills from before this update aren't in the bestiary; trophies that only need totals, like kills, levels and chests, are earned straight away.)
 - **Map** (M, or View on a controller): the whole plane, north up, with you (and your partner), the ruler, the Hellgate, the unopened chest, the objective, mission targets and angels near you.
+- **Hellfire bolt** (level 5): press G (Y on a controller) to hurl a ball of hellfire that bursts on whatever it hits, burning every angel close by. It costs hellfire and recharges in 1.6 seconds. Switching weapons on a controller moved to d-pad up.
+- **Five gold coins** drop from every angel (instead of 10).
+- **Save game** in the pause menu saves right away, wherever you are (the game still saves on its own too).
+- **Smoother fire:** flames start small and swell as they fly, so they no longer fill the screen; on Low graphics (the Xbox default) fire and dust use half as many particles and your breath no longer lights up the ground, to stop the lag when breathing fire or raising spikes.
+- **Tougher angels, weaker spikes:** every angel has 40% more health (the general 20% more). Ground spikes do less damage (30 before your level bonus), take 3.5 seconds to recharge, cost 50 hellfire, and pin angels for a shorter moment.
 - **Trading stands** in every ruler's lair, along the west side of the courtyard. Walk up to a counter and press E (X on a controller); B or Esc leaves.
   - **The Brimstone Brewer:** Hellfire Draughts that heal half your health. Carry up to 5; drink with H (D-pad down).
   - **The Weaponsmith:** buy weapons, or sell yours.

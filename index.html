@@ -38,6 +38,12 @@
         <div class="hint">Esc · Pause</div>
       </div>
       <div class="powers">
+        <div class="power locked" id="power-bolt">
+          <span class="power-key">G</span>
+          <span class="power-name">Hellfire bolt</span>
+          <span class="power-state" id="power-bolt-state"></span>
+          <div class="power-cooldown" id="power-bolt-cooldown"></div>
+        </div>
         <div class="power locked" id="power-breath">
           <span class="power-key">F</span>
           <span class="power-name">Fire breath</span>
@@ -149,6 +155,7 @@
           <button id="resume-btn">Resume</button>
           <button id="armory-btn" class="secondary">Armory</button>
           <button id="lair-btn" class="secondary">Return to the lair</button>
+          <button id="save-btn" class="secondary">Save game</button>
           <button id="trophies-btn" class="secondary">Trophies</button>
           <button id="p2-btn" class="secondary">Add Player 2</button>
           <button id="quit-btn" class="secondary">Quit to title</button>

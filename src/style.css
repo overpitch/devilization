@@ -1387,3 +1387,24 @@ h1.victory {
 .gold2 {
   color: #ffd040;
 }
+
+/* Five power slots: in narrower windows they drop their names so they don't run into your gear list. */
+@media (max-width: 1100px) {
+  .power-name {
+    display: none;
+  }
+
+  .gear-panel {
+    max-width: 220px;
+  }
+}
+
+@media (max-width: 900px) {
+  .power-state {
+    display: none;
+  }
+
+  .gear-panel {
+    max-width: 200px;
+  }
+}

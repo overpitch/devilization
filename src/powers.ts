@@ -31,7 +31,7 @@ export function breatheFire(origin: THREE.Vector3, dir: THREE.Vector3, b: Breath
   for (let i = 0; i < count; i++) {
     flamePush.copy(dir).multiplyScalar(speed);
     const color = FLAME_COLORS[Math.floor(Math.random() * FLAME_COLORS.length)];
-    ctx.fire.burst(origin, color, 1, speed * Math.tan(b.halfAngle) * 0.8, { push: flamePush, gravity: -4, life: 0.42, size: 0.26, spread: 0.08 });
+    ctx.fire.burst(origin, color, 1, speed * Math.tan(b.halfAngle) * 0.8, { push: flamePush, gravity: -4, life: 0.42, size: 0.3, spread: 0.08, grow: true });
   }
   const cos = Math.cos(b.halfAngle);
   for (const a of ctx.foes) {
@@ -50,7 +50,7 @@ export function breatheFire(origin: THREE.Vector3, dir: THREE.Vector3, b: Breath
 /** Radius of the patch of ground the spikes burst from. */
 export const SPIKE_RADIUS = 2;
 const TELEGRAPH = 0.3;
-const HOLD = 1.3;
+const HOLD = 0.8;
 const RETRACT = 0.3;
 const PER_CAST = 11;
 const POOL = PER_CAST * 6;

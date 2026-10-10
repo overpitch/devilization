@@ -76,7 +76,7 @@ export class PlayerTwoHud {
       this.el.hp.style.width = `${(p.hp / p.maxHp) * 100}%`;
       this.el.hpText.textContent = `${hp} / ${p.maxHp}`;
     });
-    this.set('energyBar', String(p.level >= 10), (v) => this.el.energyBar.classList.toggle('hidden', v !== 'true'));
+    this.set('energyBar', String(p.level >= 5), (v) => this.el.energyBar.classList.toggle('hidden', v !== 'true'));
     this.set('energy', (p.energy / p.maxEnergy).toFixed(3), (v) => (this.el.energy.style.width = `${Number(v) * 100}%`));
     const w = p.weapon;
     this.set('weapon', `${w.id}${w.quality}${w.enchant ?? ''}|${p.size}|${p.flying}|${p.potions}`, () => {

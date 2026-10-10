@@ -139,8 +139,8 @@ export class TrainingAngel implements Foe {
 
   assassinate() {}
 
-  /** Every angel is worth 10 gold; training angels give only a little XP. */
-  readonly reward = { xp: 10, gold: 10, drop: null };
+  /** Every angel is worth five gold coins; training angels give only a little XP. */
+  readonly reward = { xp: 10, gold: 5, drop: null };
 
   private chest() {
     return new THREE.Vector3(this.pos.x, this.pos.y + 1.3, this.pos.z);

@@ -2,7 +2,7 @@ import { IS_XBOX } from './settings';
 
 /** Keys the browser should never act on while playing (e.g. Space scrolling the page). */
 const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyF', 'KeyR', 'KeyC', 'KeyJ', 'KeyM', 'KeyH', 'KeyZ', 'KeyX', 'KeyQ',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyF', 'KeyR', 'KeyC', 'KeyJ', 'KeyM', 'KeyH', 'KeyG', 'KeyZ', 'KeyX', 'KeyQ',
   'Digit1', 'Digit2', 'Digit3', 'Digit4',
   'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
 ]);
@@ -318,9 +318,14 @@ export class Input {
     return null;
   }
 
-  /** Q, or Y / d-pad up on a controller: the next weapon. */
+  /** Q, or d-pad up on a controller: the next weapon. */
   get cyclePressed() {
-    return this.tap('KeyQ') || this.padWasPressed(PAD.Y, PAD.UP);
+    return this.tap('KeyQ') || this.padWasPressed(PAD.UP);
+  }
+
+  /** G, or Y on a controller: hurl a hellfire bolt. */
+  get boltPressed() {
+    return this.tap('KeyG') || this.padWasPressed(PAD.Y);
   }
 
   get sprintHeld() {

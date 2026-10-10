@@ -25,6 +25,7 @@ export const RANKS = ['Imp', 'Fiend', 'Hellguard', 'Pit Captain', 'Hellknight', 
 
 /** Levels at which powers unlock. */
 export const UNLOCK = {
+  hellfireBolt: 5,
   dogCharge: 5,
   fireBreath: 10,
   dogFireBreath: 10,
@@ -37,6 +38,7 @@ export const UNLOCK = {
 /** The messages shown when a level unlocks something. */
 export function unlocksAt(level: number, dogName: string): { title: string; detail: string }[] {
   const out: { title: string; detail: string }[] = [];
+  if (level === UNLOCK.hellfireBolt) out.push({ title: 'Hellfire bolt', detail: 'Press G (Y on a controller) to hurl a ball of hellfire' });
   if (level === UNLOCK.dogCharge) out.push({ title: 'Horn charge', detail: `${dogName} can now charge with its horns` });
   if (level === UNLOCK.fireBreath) out.push({ title: 'Fire breath', detail: `Hold F to breathe fire. ${dogName} breathes fire too` });
   if (level === UNLOCK.spikes) out.push({ title: 'Ground spikes', detail: 'Hold R to aim, let go to impale' });

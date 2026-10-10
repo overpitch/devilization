@@ -9,6 +9,8 @@ interface Particle {
   size: number;
   /** Downward pull; negative makes it rise (fire, holy light). */
   gravity: number;
+  /** Starts small and swells (flames), instead of starting full size. */
+  grow: boolean;
 }
 
 export interface BurstOptions {
@@ -22,6 +24,8 @@ export interface BurstOptions {
   spread?: number;
   /** A velocity added to every particle (±20%), e.g. a jet of flame. */
   push?: THREE.Vector3;
+  /** Starts small and swells as it flies (flames leaving your mouth). */
+  grow?: boolean;
 }
 
 /**
@@ -37,6 +41,11 @@ export class Particles {
   private readonly q = new THREE.Quaternion();
   private readonly s = new THREE.Vector3();
   private readonly c = new THREE.Color();
+  /**
+   * Share of particles actually made (Low graphics halves them). Glowing
+   * particles overlapping on screen are costly on slower machines like an Xbox.
+   */
+  density = 1;
 
   constructor(scene: THREE.Scene, glowing: boolean, private readonly max = 600) {
     const mat = glowing
@@ -46,7 +55,7 @@ export class Particles {
     this.mesh.frustumCulled = false;
     this.m.makeScale(0, 0, 0);
     for (let i = 0; i < max; i++) {
-      this.items.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, maxLife: 1, size: 0, gravity: 16 });
+      this.items.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, maxLife: 1, size: 0, gravity: 16, grow: false });
       this.mesh.setMatrixAt(i, this.m);
       this.mesh.setColorAt(i, this.c.set(0xffffff));
     }
@@ -54,9 +63,10 @@ export class Particles {
   }
 
   burst(origin: THREE.Vector3, color: number, count: number, speed: number, opts: BurstOptions = {}) {
-    const { dir, gravity = 16, life = 0.7, size = 0.1, spread = 0, push } = opts;
+    const { dir, gravity = 16, life = 0.7, size = 0.1, spread = 0, push, grow = false } = opts;
     this.c.set(color);
     for (let n = 0; n < count; n++) {
+      if (this.density < 1 && Math.random() > this.density) continue;
       const i = this.next;
       this.next = (this.next + 1) % this.max;
       const p = this.items[i];
@@ -69,6 +79,7 @@ export class Particles {
       p.maxLife = p.life = life * (0.6 + Math.random() * 0.8);
       p.size = size * (0.6 + Math.random() * 0.8);
       p.gravity = gravity;
+      p.grow = grow;
       this.mesh.setColorAt(i, this.c);
     }
     this.mesh.instanceColor!.needsUpdate = true;
@@ -87,7 +98,9 @@ export class Particles {
         p.pos.y = ground;
         p.vel.set(p.vel.x * 0.5, -p.vel.y * 0.25, p.vel.z * 0.5);
       }
-      const size = p.life > 0 ? p.size * Math.min(1, (p.life / p.maxLife) * 2) : 0;
+      const t = p.life / p.maxLife;
+      // Flames swell from a third of their size; everything shrinks away at the end.
+      const size = p.life > 0 ? p.size * Math.min(1, t * 2) * (p.grow ? 0.3 + 0.7 * Math.min(1, (1 - t) * 2.5) : 1) : 0;
       this.m.compose(p.pos, this.q, this.s.setScalar(size));
       this.mesh.setMatrixAt(i, this.m);
     }

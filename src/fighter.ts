@@ -52,8 +52,8 @@ interface KindDef {
   cape?: number;
 }
 
-/** Every angel is worth the same gold: 10. */
-const ANGEL_GOLD = 10;
+/** Every angel is worth the same gold: five coins. */
+const ANGEL_GOLD = 5;
 
 const ANGEL_SKIN = 0xf2dcc4;
 const KINDS: Record<FighterKind, KindDef> = {
@@ -128,6 +128,9 @@ type Action = 'none' | 'windup' | 'recover';
 const BURN_TIME = 2.5;
 /** Gives up the chase this far from home. */
 const LEASH = 55;
+/** Heaven's angels are tougher than their listed health: 40% more, and the general 20% more. */
+const ANGEL_TOUGHNESS = 1.4;
+const GENERAL_TOUGHNESS = 1.2;
 const FLASH_HIT = new THREE.Color(0xffffff);
 const FLASH_TELL = new THREE.Color(0xffc040);
 const tmp = new THREE.Vector3();
@@ -228,7 +231,8 @@ export class Fighter implements Foe, HellBody {
     this.radius = def.radius;
     this.power = opts.power ?? 1;
     this.damageMult = this.power;
-    this.hp = this.maxHp = Math.round(def.hp * this.power * (opts.toughness ?? 1));
+    const tough = def.side === 'hell' ? 1 : def.boss ? GENERAL_TOUGHNESS : ANGEL_TOUGHNESS;
+    this.hp = this.maxHp = Math.round(def.hp * tough * this.power * (opts.toughness ?? 1));
     this.label = opts.label ?? null;
     this.pos.set(x, groundAt(x, z, 0.3), z);
     this.home.copy(this.pos);
