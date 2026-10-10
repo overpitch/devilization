@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createHumanoid, HIPS_HEIGHT, setFlash, type Humanoid, type HumanoidLook } from './character';
-import { buildWeaponMesh, rollQuality, type Quality, type Weapon, type WeaponId, type WeaponModel } from './weapons';
+import { buildWeaponMesh, randomWeaponEnchant, rollQuality, type Quality, type Weapon, type WeaponId, type WeaponModel } from './weapons';
 import { groundAt, heightAt, isLava, LAVA_Y, moveBody } from './world';
 import { sfx, volumeAt } from './audio';
 import { dampAngle, wrapAngle } from './util';
@@ -34,7 +34,7 @@ interface KindDef {
   sight: number;
   xp: number;
   gold: number;
-  drop?: { id: WeaponId; chance: number; minQuality?: Quality };
+  drop?: { id: WeaponId; chance: number; minQuality?: Quality; enchantChance?: number };
   look: HumanoidLook;
   weapon: WeaponModel | null;
   shield?: boolean;
@@ -59,7 +59,7 @@ const KINDS: Record<FighterKind, KindDef> = {
   archer: {
     side: 'heaven', name: 'Angel archer', hp: 40, speed: 4.6, radius: 0.42, scale: 0.95,
     attack: 'bow', damage: 7, reach: 0, windup: 0.9, recover: 0.3, cooldown: 1.9, keepAway: 12, sight: 26,
-    xp: 18, gold: ANGEL_GOLD,
+    xp: 18, gold: ANGEL_GOLD, drop: { id: 'bow', chance: 0.3 },
     look: { skin: ANGEL_SKIN, shirt: 0xe8f0e0, pants: 0xd8d0b8, boots: 0xb08a50, eyes: 0x7ac0ff, glowingEyes: true, belt: 0x8a6a3a },
     weapon: 'bow', wings: true, halo: 0xffe27a,
   },
@@ -73,7 +73,7 @@ const KINDS: Record<FighterKind, KindDef> = {
   officer: {
     side: 'heaven', name: 'Angel captain', hp: 160, speed: 4.6, radius: 0.5, scale: 1.15,
     attack: 'melee', damage: 15, reach: 1.6, windup: 0.6, recover: 0.5, cooldown: 1.0, keepAway: 0, sight: 24,
-    xp: 60, gold: ANGEL_GOLD, drop: { id: 'spear', chance: 1, minQuality: 1 },
+    xp: 60, gold: ANGEL_GOLD, drop: { id: 'spear', chance: 1, minQuality: 1, enchantChance: 0.2 },
     look: { skin: ANGEL_SKIN, shirt: 0xd9b24a, pants: 0xe4ddca, boots: 0xd9b24a, eyes: 0x7ac0ff, glowingEyes: true, belt: 0x3050c0, armor: 0xe0c060, plume: 0x3050c0 },
     weapon: 'spear', wings: true, halo: 0xffe27a, cape: 0x3050c0,
   },
@@ -312,7 +312,10 @@ export class Fighter implements Foe, HellBody {
   get reward() {
     const d = this.def.drop;
     let drop: Weapon | null = null;
-    if (d && this.dropRoll < d.chance) drop = { id: d.id, quality: Math.max(d.minQuality ?? 0, rollQuality()) as Quality };
+    if (d && this.dropRoll < d.chance) {
+      drop = { id: d.id, quality: Math.max(d.minQuality ?? 0, rollQuality()) as Quality };
+      if (Math.random() < (d.enchantChance ?? 0)) drop.enchant = randomWeaponEnchant();
+    }
     return { xp: this.def.xp, gold: this.def.gold, drop };
   }
 
@@ -670,7 +673,7 @@ export class Fighter implements Foe, HellBody {
     if (def.attack === 'melee') {
       sfx.angelSwing(vol);
       const facing = Math.abs(wrapAngle(Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z) - this.yaw)) < 1.3;
-      if (edge < def.reach + 0.4 && facing) t.takeDamage(def.damage, ctx);
+      if (edge < def.reach + 0.4 && facing) t.takeDamage(def.damage, ctx, { attacker: this });
     } else if (def.attack === 'bow') {
       sfx.bowShot(vol);
       ctx.projectiles.fire('arrow', chest, tmp.set(t.pos.x, t.pos.y + 1.2, t.pos.z), def.damage, t);

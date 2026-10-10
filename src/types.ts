@@ -27,12 +27,18 @@ export interface Foe {
   assassinate(ctx: GameContext): void;
 }
 
+/** Where damage came from: holy light (arrows, bolts) or an angel's blow up close. */
+export interface DamageSource {
+  holy?: boolean;
+  attacker?: Foe;
+}
+
 /** Anything on hell's side that angels attack: you, your dog, your imps. */
 export interface HellBody {
   readonly pos: THREE.Vector3;
   readonly radius: number;
   readonly alive: boolean;
-  takeDamage(amount: number, ctx: GameContext): void;
+  takeDamage(amount: number, ctx: GameContext, source?: DamageSource): void;
 }
 
 /** Shared game state handed to every entity's update. */

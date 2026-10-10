@@ -46,7 +46,10 @@
           <div class="power-cooldown" id="power-spikes-cooldown"></div>
         </div>
       </div>
-      <div class="weapons" id="weapons"></div>
+      <div class="gear-panel">
+        <div class="weapons" id="weapons"></div>
+        <div class="armor-line" id="armor-line"></div>
+      </div>
       <div class="crosshair"></div>
       <div class="prompt hidden" id="prompt"></div>
       <div class="sneak hidden" id="sneak">Sneaking</div>
@@ -66,7 +69,7 @@
     <!-- Title -->
     <div id="title-screen" class="overlay screen">
       <div class="embers" id="embers"></div>
-      <div class="version">Milestone 3 · All sound is generated live in your browser</div>
+      <div class="version">Milestone 4 · All sound is generated live in your browser</div>
       <div class="panel">
         <h1>DEVILIZATION</h1>
         <p class="subtitle">Rise from Imp to Demon Lord</p>
@@ -118,6 +121,7 @@
         <p class="subtitle">Your progress is saved</p>
         <div class="menu row">
           <button id="resume-btn">Resume</button>
+          <button id="armory-btn" class="secondary">Armory</button>
           <button id="lair-btn" class="secondary">Return to the lair</button>
           <button id="quit-btn" class="secondary">Quit to title</button>
         </div>
@@ -145,6 +149,25 @@
           </label>
         </div>
         <dl class="controls" data-controls></dl>
+      </div>
+    </div>
+
+    <!-- Armory -->
+    <div id="armory-screen" class="overlay hidden">
+      <div class="panel armory">
+        <h2>The Armory</h2>
+        <p class="subtitle">Weaponsmith and armorer of the First Plane</p>
+        <div class="armory-top">
+          <div class="tabs" role="tablist">
+            <button class="tab" data-tab="weapons">Weaponsmith</button>
+            <button class="tab" data-tab="armor">Armorer</button>
+            <button class="tab" data-tab="gear">Your gear</button>
+          </div>
+          <div class="gold armory-gold" id="armory-gold"></div>
+        </div>
+        <p class="armory-message" id="armory-message"></p>
+        <div class="cards" id="armory-rows"></div>
+        <button id="armory-close-btn" class="secondary">Back</button>
       </div>
     </div>
 

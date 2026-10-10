@@ -40,5 +40,6 @@ export function unlocksAt(level: number, dogName: string): { title: string; deta
   if (level === UNLOCK.dogCharge) out.push({ title: 'Horn charge', detail: `${dogName} can now charge with its horns` });
   if (level === UNLOCK.fireBreath) out.push({ title: 'Fire breath', detail: `Hold F to breathe fire. ${dogName} breathes fire too` });
   if (level === UNLOCK.spikes) out.push({ title: 'Ground spikes', detail: 'Hold R to aim, let go to impale' });
+  if (level === UNLOCK.naturalArmor) out.push({ title: 'Natural armor', detail: 'Your hide hardens: 15% less damage from everything' });
   return out;
 }

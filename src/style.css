@@ -788,11 +788,21 @@ h2.second {
   text-shadow: 0 1px 3px #000;
 }
 
-/* Carried weapons, bottom left. */
-.weapons {
+/* Carried weapons and armor, bottom left. */
+.gear-panel {
   position: absolute;
   left: 20px;
   bottom: 22px;
+}
+
+.armor-line {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(242, 226, 208, 0.75);
+  text-shadow: 0 1px 2px #000;
+}
+
+.weapons {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -941,4 +951,60 @@ button:disabled {
   grid-row: 1 / span 3;
   font-size: 16px;
   padding: 8px 18px;
+}
+
+/* ---------- Milestone 4: the armory ---------- */
+
+.panel.armory {
+  width: min(760px, 94vw);
+  max-width: none;
+  max-height: 94vh;
+  overflow-y: auto;
+}
+
+.armory-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.tab {
+  font-size: 15px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.5);
+  border-color: #8a5a4a;
+}
+
+.tab.active {
+  background: #7d1418;
+  border-color: #ff7a3a;
+}
+
+.armory-message {
+  min-height: 1.3em;
+  margin: 4px 0 10px;
+  font-size: 14px;
+  color: #ffd050;
+}
+
+.card .reason {
+  font-size: 12px;
+  color: #ff8a6a;
+}
+
+.floater.heal {
+  font-size: 15px;
+  color: #ff6a8a;
+}
+
+.panel.armory,
+.panel.ruler {
+  scrollbar-color: #7d1418 rgba(0, 0, 0, 0.3);
 }

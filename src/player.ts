@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { Input } from './input';
 import type { FirstPersonCamera } from './camera';
-import type { Foe, GameContext } from './types';
-import { MAX_WEAPONS, qualityMult, STARTING_WEAPON, WEAPONS, type SwingDef, type Weapon, type WeaponId } from './weapons';
+import type { DamageSource, Foe, GameContext } from './types';
+import { ARMORS, MAX_WEAPONS, qualityMult, STARTING_WEAPON, WEAPONS, type Armor, type SwingDef, type Weapon, type WeaponId } from './weapons';
 import { groundAt, heightAt, isLava, LAVA_Y, moveBody } from './world';
 import { setBreathing, sfx } from './audio';
 import { clamp, smoothing, wrapAngle } from './util';
@@ -19,6 +19,10 @@ const GRAVITY = 26;
 const STEP_UP = 1.05;
 const REGEN_DELAY = 4;
 const REGEN_RATE = 6;
+/** Natural armor (level 50) takes this share off all damage, on top of worn armor. */
+const NATURAL_ARMOR = 0.15;
+/** Armor never stops more than this share. */
+const MAX_REDUCTION = 0.6;
 
 /** Hellfire per second while breathing fire. */
 const BREATH_COST = 22;
@@ -82,6 +86,8 @@ export class Player {
   assassinTarget: Foe | null = null;
   /** The weapons you carry, and which one is in your hand. */
   weapons: Weapon[] = [{ ...STARTING_WEAPON }];
+  /** Worn armor, if any. */
+  armor: Armor | null = null;
   equipped = 0;
   /** The angel you last hit and when; the dog joins in on it. */
   lastTarget: Foe | null = null;
@@ -253,6 +259,7 @@ export class Player {
     this.crouch += ((this.sneaking ? 1 : 0) - this.crouch) * smoothing(10, dt);
     this.sprinting = input.sprintHeld && move.z > 0.3 && !this.swing && !this.sneaking;
     let speed = this.sneaking ? SNEAK_SPEED : this.sprinting ? SPRINT_SPEED : WALK_SPEED;
+    if (this.armor?.enchant === 'swift') speed *= 1.15;
     if (this.swing || this.breathing) speed *= 0.75;
     if (this.inLava) speed *= LAVA_SLOW;
     cam.forward(fwd);
@@ -298,7 +305,8 @@ export class Player {
 
     // Health comes back after a while out of harm's way.
     this.sinceHurt += dt;
-    if (this.sinceHurt > REGEN_DELAY) this.hp = Math.min(this.maxHp, this.hp + REGEN_RATE * dt);
+    const mending = this.armor?.enchant === 'mending';
+    if (this.sinceHurt > (mending ? REGEN_DELAY / 2 : REGEN_DELAY)) this.hp = Math.min(this.maxHp, this.hp + REGEN_RATE * (mending ? 2 : 1) * (this.maxHp / 100) * dt);
 
     this.assassinTarget = this.findAssassinTarget(ctx, cam);
     if (!this.breathing) this.updateSwing(dt, ctx, input, cam);
@@ -448,7 +456,8 @@ export class Player {
     const s = this.swing;
     if (!s) return;
     const def = s.def;
-    s.time += dt;
+    // Haste makes every swing and shot a third quicker.
+    s.time += dt * (s.weapon.enchant === 'haste' ? 1.5 : 1);
     const t = s.time / def.dur;
     if (!s.struck && t >= def.strike - 0.18 && t - dt / def.dur < def.strike - 0.18) sfx.swing(def.heavy);
     if (!s.struck && t >= def.strike) {
@@ -482,8 +491,12 @@ export class Player {
     return null;
   }
 
-  /** The blow lands: hit every enemy in the arc in front of you. */
+  /** The blow lands (or the shot leaves): hit every enemy in the arc in front of you. */
   private strike(def: SwingDef, weapon: Weapon, ctx: GameContext, cam: FirstPersonCamera) {
+    if (def.shot) {
+      this.shoot(def, weapon, ctx, cam);
+      return;
+    }
     // An unaware enemy with its back to you dies in one silent blow.
     const victim = this.findAssassinTarget(ctx, cam);
     if (victim) {
@@ -495,6 +508,7 @@ export class Player {
       return;
     }
     let hits = 0;
+    const struck = new Set<Foe>();
     for (const a of ctx.foes) {
       if (!a.alive) continue;
       const dx = a.pos.x - this.pos.x;
@@ -503,13 +517,22 @@ export class Player {
       const dist = Math.hypot(dx, dz);
       if (dist > def.reach + a.radius || dy < -2 || dy > 3) continue;
       if (Math.abs(wrapAngle(Math.atan2(dx, dz) - cam.yaw)) > def.arc && dist > a.radius + 0.6) continue;
-      const damage = Math.round(def.damage * qualityMult(weapon) * this.damageMult * (0.85 + Math.random() * 0.3));
-      const dir = tmp.set(dx, 0, dz).normalize();
-      a.takeHit(damage, dir, def.knockback, ctx);
-      ctx.floatText(new THREE.Vector3(a.pos.x, a.pos.y + 2.3, a.pos.z), String(damage), def.heavy ? 'heavy' : 'damage');
-      this.lastTarget = a;
-      this.lastTargetTime = this.time;
+      this.hitFoe(a, def.damage, tmp.set(dx, 0, dz).normalize(), def.knockback, def.heavy, weapon, ctx);
+      struck.add(a);
       hits++;
+    }
+    if (def.quake) {
+      // The ground shakes where the blow lands, hurting everyone close by.
+      const at = new THREE.Vector3(this.pos.x + Math.sin(cam.yaw) * def.reach * 0.7, this.pos.y + 0.1, this.pos.z + Math.cos(cam.yaw) * def.reach * 0.7);
+      ctx.debris.burst(at, 0x4a2a22, 30, 7, { size: 0.15, spread: 0.8 });
+      ctx.fire.burst(at, 0xff6a10, 20, 6, { life: 0.4, size: 0.1, spread: 1 });
+      sfx.thud();
+      ctx.addShake(0.35);
+      for (const a of ctx.foes) {
+        if (!a.alive || struck.has(a) || Math.hypot(a.pos.x - at.x, a.pos.z - at.z) > def.quake + a.radius || Math.abs(a.pos.y - at.y) > 2) continue;
+        this.hitFoe(a, def.damage * 0.6, tmp.set(a.pos.x - at.x, 0, a.pos.z - at.z).normalize(), def.knockback, true, weapon, ctx);
+        hits++;
+      }
     }
     if (hits > 0) {
       sfx.hit(def.heavy);
@@ -523,6 +546,42 @@ export class Player {
       ctx.debris.burst(at, 0x4a2a22, 12, 4, { size: 0.12 });
       ctx.fire.burst(at, 0xffa040, 6, 4, { life: 0.3, size: 0.06 });
     }
+  }
+
+  /** Damages a foe with a weapon: quality, level, a little luck, and the weapon's enchantment. */
+  private hitFoe(a: Foe, base: number, dir: THREE.Vector3, knockback: number, heavy: boolean, weapon: Weapon, ctx: GameContext) {
+    const damage = Math.round(base * qualityMult(weapon) * this.damageMult * (0.85 + Math.random() * 0.3));
+    a.takeHit(damage, dir, knockback, ctx);
+    ctx.floatText(new THREE.Vector3(a.pos.x, a.pos.y + 2.3, a.pos.z), String(damage), heavy ? 'heavy' : 'damage');
+    if (weapon.enchant === 'flame') a.burn(0, 6 * this.damageMult, ctx);
+    if (weapon.enchant === 'thirst' && this.alive) {
+      const heal = Math.max(1, Math.round(damage / 6));
+      this.hp = Math.min(this.maxHp, this.hp + heal);
+      ctx.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 1.6, this.pos.z).addScaledVector(dir, 0.8), `+${heal}`, 'heal');
+    }
+    this.lastTarget = a;
+    this.lastTargetTime = this.time;
+  }
+
+  /** A burning arrow or a javelin, flying where you look. */
+  private shoot(def: SwingDef, weapon: Weapon, ctx: GameContext, cam: FirstPersonCamera) {
+    const dir = cam.lookDir(new THREE.Vector3());
+    const right = new THREE.Vector3(-Math.cos(cam.yaw), 0, Math.sin(cam.yaw));
+    const from = this.eye(new THREE.Vector3()).addScaledVector(dir, 0.8).addScaledVector(right, def.shot === 'javelin' ? 0.25 : 0.05);
+    from.y -= 0.12;
+    sfx.shoot(def.shot === 'javelin');
+    ctx.projectiles.shoot(def.shot === 'javelin' ? 'javelin' : 'hellArrow', from, dir, weapon.enchant, (foe, d) => {
+      this.hitFoe(foe, def.damage, d, def.knockback, def.heavy, weapon, ctx);
+      sfx.hit(def.heavy, 0.7);
+      // Burning arrows always set angels alight a little.
+      if (def.shot === 'arrow' && weapon.enchant !== 'flame') foe.burn(0, 2 * this.damageMult, ctx);
+    });
+  }
+
+  /** The share of damage your armor (and, at level 50, your own hide) stops. */
+  get armorReduction() {
+    const worn = this.armor ? ARMORS[this.armor.id].reduction : 0;
+    return Math.min(MAX_REDUCTION, worn + (this.level >= UNLOCK.naturalArmor ? NATURAL_ARMOR : 0));
   }
 
   /** Seconds since you last hit an angel; the dog uses this to pick a fight. */
@@ -541,8 +600,17 @@ export class Player {
   }
 
   /** Damage from an attack. Lava and fire never call this: they can't hurt a demon. */
-  takeDamage(amount: number, ctx: GameContext) {
+  takeDamage(amount: number, ctx: GameContext, source?: DamageSource) {
     if (!this.alive) return;
+    amount *= 1 - this.armorReduction;
+    if (source?.holy && this.armor?.enchant === 'ward') amount *= 0.6;
+    // Thorns: whoever strikes you up close gets hurt too.
+    const attacker = source?.attacker;
+    if (attacker?.alive && this.armor?.enchant === 'thorns') {
+      const back = Math.max(1, Math.round(amount * 0.6 * this.damageMult));
+      attacker.takeHit(back, tmp.set(attacker.pos.x - this.pos.x, 0, attacker.pos.z - this.pos.z).normalize(), 2, ctx);
+      ctx.floatText(new THREE.Vector3(attacker.pos.x, attacker.pos.y + 2.3, attacker.pos.z), String(back), 'dog');
+    }
     this.hp -= amount;
     this.sinceHurt = 0;
     this.hurtFlash = Math.min(1, this.hurtFlash + 0.7);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createHumanoid, setFlash, type Humanoid } from './character';
 import { Fighter, type FighterKind, type SpawnOptions } from './fighter';
-import { buildWeaponMesh, weaponName, weaponPower, type Quality, type Weapon, type WeaponId } from './weapons';
+import { buildWeaponMesh, randomWeaponEnchant, WEAPON_ENCHANTS, weaponName, weaponPower, type Quality, type Weapon, type WeaponId } from './weapons';
 import { addCollider, findOpenSpot, groundAt, heightAt } from './world';
 import { CROWN_CAMP, LAIR, PATROLS, SPAWN, THRONE, TRAITOR_POST, TREASURE, WEST_BRIDGE } from './layout';
 import { sfx } from './audio';
@@ -631,12 +631,12 @@ export class Campaign {
 
   dropWeapon(w: Weapon, at: THREE.Vector3) {
     const group = new THREE.Group();
-    const model = buildWeaponMesh(w.id);
+    const model = buildWeaponMesh(w.id, w.enchant);
     model.rotation.x = Math.PI / 2;
     model.position.y = 0.15;
     group.add(model);
     // A pillar of light marks it, colored by quality.
-    const beam = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: QUALITY_GLOW[w.quality], transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const beam = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: w.enchant ? WEAPON_ENCHANTS[w.enchant].color : QUALITY_GLOW[w.quality], transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
     beam.scale.set(0.12, 2.2, 0.12);
     beam.position.y = 1.1;
     group.add(beam);
@@ -679,9 +679,9 @@ export class Campaign {
     const p = this.chest.position;
     const at = new THREE.Vector3(p.x, p.y + 0.8, p.z);
     this.hooks.dropGold(at, 30, 5);
-    const ids: WeaponId[] = ['sword', 'spear', 'axe'];
-    this.dropWeapon({ id: ids[Math.floor(Math.random() * ids.length)], quality: 2 as Quality }, new THREE.Vector3(p.x + 0.8, p.y, p.z + 0.4));
-    this.hooks.announce('Treasure!', 'The old lords’ chest: 150 gold and a fine weapon');
+    const ids: WeaponId[] = ['sword', 'spear', 'axe', 'hammer', 'scythe', 'bow', 'javelin'];
+    this.dropWeapon({ id: ids[Math.floor(Math.random() * ids.length)], quality: 2 as Quality, enchant: randomWeaponEnchant() }, new THREE.Vector3(p.x + 0.8, p.y, p.z + 0.4));
+    this.hooks.announce('Treasure!', 'The old lords’ chest: 150 gold and an enchanted weapon');
     this.hooks.save();
   }
 

@@ -17,7 +17,7 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 |---|---|
 | Move | W A S D |
 | Look | Mouse or trackpad |
-| Swing the flail (click again during a swing to chain a second swing) | Click or `J` |
+| Attack: swing, shoot or throw (click again during a swing to chain the combo) | Click or `J` |
 | Breathe fire (from level 10) | Hold `F` |
 | Ground spikes (from level 15) | Hold `R` to aim, let go to strike |
 | Talk, take, open | `E` |
@@ -25,9 +25,20 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 | Switch weapon | `1`–`4`, or `Q` for the next one |
 | Jump | `Space` |
 | Sprint | `Shift` |
-| Pause (Options, Return to the lair) | `Esc` |
+| Pause (Armory, Options, Return to the lair) | `Esc` |
 
 ## What's in so far
+
+### Milestone 4
+
+- **The Armory** (pause menu): a weaponsmith, an armorer, and *Your gear*, where you sell what you carry. Enchanted stock changes after every mission you finish.
+- **New weapons:** the Brimstone Hammer (very slow; its overhead blow sends a shockwave through everyone nearby), the Reaper's Scythe (huge sweeps), the Longbow (burning arrows) and Hell Javelins (heavy thrown spears; another is always at hand). The axe is now the Hellforged Axe.
+- **Armor:** Leather Harness (12%), Bone Mail (20%) and Obsidian Plate (30%) stop a share of the damage you take. It shows as bracers on your arms. Buying new armor trades in the old.
+- **Enchantments** (gear glows in the enchantment's color):
+  - Weapons: *of Flame* (sets angels burning), *of Thirst* (heals you by a sixth of the damage you deal), *of Haste* (a third faster).
+  - Armor: *Holy Ward* (arrows and bolts do 40% less), *Thorns* (angels that hit you up close get hurt), *Mending* (heal sooner and twice as fast), *Swiftness* (move 15% faster).
+- **Drops:** archers sometimes drop longbows; captains sometimes drop enchanted spears; the treasure chest now holds an enchanted weapon.
+- **Natural armor** at level 50: 15% less damage from everything, on top of worn armor.
 
 ### Milestone 3
 
@@ -36,7 +47,7 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 - **Main missions:** *Blood at the Bridge* (hold the western bridge with six imps against three waves), *The Stolen Crown* (take it back from the angels' camp across the eastern river), and *The Traitor of the Pits* (kill Vargash on the northwest mesa; unseen pays double). Finishing all three promotes you to **Fiend**.
 - **Side missions:** two at a time, at random spots on the plain: cull a patrol, silence a captain (unseen pays double), or recover a soul gem. Repeatable.
 - **Stealth:** angels on guard show a yellow **?** as they grow suspicious and a red **!** when they spot you. Hold C to sneak: slower, lower, and much harder to see. Walk up behind an unaware enemy and click for a silent kill. Loud kills alert everyone nearby; silent ones don't.
-- **Weapons:** angels drop their weapons (footsoldiers sometimes drop swords, captains always drop spears, Vargash drops his axe). Weapons come Notched, plain or Fine. Carry up to four; taking a fifth swaps it for the one in your hand. Each weapon has its own combo.
+- **Weapons:** angels drop their weapons (footsoldiers sometimes drop swords, captains always drop spears, Vargash drops a Fine Hellforged Axe). Weapons come Notched, plain or Fine. Carry up to four; taking a fifth swaps it for the one in your hand. Each weapon has its own combo.
 - **Gold:** every angel drops 10 gold. Vargash drops 30.
 - **Treasure chest:** on top of a pillar south-east of the lair that's too tall to climb. Ride the geyser beside it. Inside: 150 gold and a Fine weapon.
 - **Ambient patrols** roam the plain and come back a while after you wipe them out.
@@ -82,10 +93,11 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 | `src/main.ts` | Setup, game loop, menus, interacting, saving, death and respawn |
 | `src/campaign.ts` | Malphas, missions, the angels' camp and watchpost, the treasure chest, patrols, weapons on the ground, objectives |
 | `src/fighter.ts` | Angels, the traitor and imps: models, awareness, AI, attacks, death |
-| `src/projectiles.ts` | Holy arrows and bolts of light |
-| `src/weapons.ts` | Weapon stats, combos, quality, and blocky weapon models |
+| `src/projectiles.ts` | Holy arrows and bolts of light; your burning arrows and javelins |
+| `src/weapons.ts` | Weapons, armor, enchantments, prices, and blocky weapon models |
+| `src/armory.ts` | The armory's stock, buying and selling |
 | `src/layout.ts` | Where the lair, camps, bridge, patrols and treasure are |
-| `src/trainingAngel.ts` | Chained training angels |
+| `src/trainingAngel.ts` | Dazed training angels |
 | `src/world.ts` | Block terrain, lava rivers and lakes, scenery, sky, lighting, movement against blocks |
 | `src/geysers.ts` | Fire geysers |
 | `src/player.ts` | The demon: movement, jumping, lava, flail swings and hits, levels, hellfire, fire breath and spike aiming |

@@ -1,4 +1,4 @@
-import { isWeapon, STARTING_WEAPON, type Weapon } from './weapons';
+import { isArmor, isWeapon, STARTING_WEAPON, type Armor, type Weapon } from './weapons';
 
 /** The saved game, kept in this browser. */
 export interface SaveData {
@@ -15,6 +15,8 @@ export interface SaveData {
   playTime: number;
   weapons: Weapon[];
   equipped: number;
+  /** Worn armor (milestone 4). */
+  armor: Armor | null;
   /** Main missions finished. */
   missionsDone: string[];
   sideDone: number;
@@ -25,7 +27,7 @@ export interface SaveData {
 }
 
 /** Fields added after milestone 2, with their starting values. */
-const LATER_FIELDS = () => ({ weapons: [{ ...STARTING_WEAPON }], equipped: 0, missionsDone: [] as string[], sideDone: 0, chestOpened: false, talked: false });
+const LATER_FIELDS = () => ({ weapons: [{ ...STARTING_WEAPON }], equipped: 0, armor: null as Armor | null, missionsDone: [] as string[], sideDone: 0, chestOpened: false, talked: false });
 
 let key = 'devilization.save';
 
@@ -59,6 +61,7 @@ export function loadSave(): SaveData | null {
     if (save.weapons.length === 0) save.weapons = [{ ...STARTING_WEAPON }];
     if (!(save.equipped >= 0 && save.equipped < save.weapons.length)) save.equipped = 0;
     if (!Array.isArray(save.missionsDone)) save.missionsDone = [];
+    if (!isArmor(save.armor)) save.armor = null;
     return save;
   } catch {
     return null;

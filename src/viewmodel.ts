@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp, smoothing } from './util';
-import { buildWeaponMesh, type WeaponId } from './weapons';
+import { ARMOR_ENCHANTS, ARMORS, buildWeaponMesh, type Armor, type Weapon, type WeaponId } from './weapons';
 
 /**
  * The demon's own arms and weapon, seen in first person. Drawn in its own
@@ -61,7 +61,16 @@ const BLADE_REST: Record<Blade, { hand: V3; rot: V3 }> = {
   sword: { hand: [0.3, -0.36, -0.62], rot: [-0.55, PI - 0.2, 0] },
   spear: { hand: [0.28, -0.36, -0.45], rot: [-0.12, PI - 0.06, 0] },
   axe: { hand: [0.32, -0.42, -0.62], rot: [-0.5, PI - 0.25, 0] },
+  hammer: { hand: [0.32, -0.46, -0.6], rot: [-0.45, PI - 0.25, 0] },
+  scythe: { hand: [0.34, -0.46, -0.5], rot: [-0.3, PI - 0.3, 0] },
+  // Held up by the shoulder, ready to throw.
+  javelin: { hand: [0.34, -0.16, -0.42], rot: [-0.12, PI - 0.04, 0] },
+  // The bow is held in the left hand; this is where the right hand rests on the string.
+  bow: { hand: [-0.02, -0.2, -0.74], rot: [0, PI, 0] },
 };
+
+/** Where the left hand holds the bow out in front. */
+const BOW_HAND = new THREE.Vector3(-0.24, -0.2, -0.82);
 
 const BLADE_SWINGS: Record<string, BladeKey[]> = {
   // Out to the right, then across to the left.
@@ -95,6 +104,28 @@ const BLADE_SWINGS: Record<string, BladeKey[]> = {
     { t: 0.35, hand: [0.25, 0.1, -0.4], rot: [-2.1, PI, 0] },
     { t: 0.58, hand: [0.1, -0.3, -0.85], rot: [0.6, PI, 0] },
     { t: 0.85, hand: [0.15, -0.45, -0.75], rot: [0.9, PI, 0] },
+  ],
+  // Scythe: wide, low reaping sweeps.
+  reapR: [
+    { t: 0.3, hand: [0.6, -0.2, -0.3], rot: [-0.2, PI - 1.5, -1.5] },
+    { t: 0.55, hand: [0.0, -0.3, -0.6], rot: [-0.25, PI, -1.5] },
+    { t: 0.8, hand: [-0.5, -0.35, -0.4], rot: [-0.2, PI + 1.4, -1.5] },
+  ],
+  reapL: [
+    { t: 0.3, hand: [-0.4, -0.2, -0.35], rot: [-0.2, PI + 1.4, 1.5] },
+    { t: 0.55, hand: [0.05, -0.3, -0.6], rot: [-0.25, PI, 1.5] },
+    { t: 0.8, hand: [0.6, -0.35, -0.4], rot: [-0.2, PI - 1.5, 1.5] },
+  ],
+  // Javelin: drawn back past the shoulder, then hurled.
+  throw: [
+    { t: 0.35, hand: [0.45, 0.0, 0.08], rot: [-0.35, PI, 0] },
+    { t: 0.5, hand: [0.18, -0.1, -0.95], rot: [0.05, PI, 0] },
+    { t: 0.7, hand: [0.25, -0.35, -0.7], rot: [0.3, PI, 0] },
+  ],
+  // Bow: the right hand pulls the string back to the cheek, then lets go.
+  draw: [
+    { t: 0.55, hand: [0.1, -0.14, -0.36], rot: [0, PI, 0] },
+    { t: 0.62, hand: [0.12, -0.18, -0.44], rot: [0, PI, 0] },
   ],
   axeCleave: [
     { t: 0.35, hand: [0.6, -0.1, -0.4], rot: [-0.2, PI - 1.4, -1.5] },
@@ -160,11 +191,17 @@ export class ViewModel {
   private readonly tip = new THREE.Vector3();
   /** The flail's parts, hidden while another weapon is in hand. */
   private readonly flailParts: THREE.Object3D[] = [];
-  private readonly held: Record<Blade, THREE.Group>;
+  /** Held weapon models, built when first needed, by weapon and enchantment. */
+  private readonly held = new Map<string, THREE.Group>();
+  private current: THREE.Group | null = null;
+  private shownKey = 'flail|';
+  /** The arrow nocked on the bow. */
+  private readonly arrow: THREE.Mesh;
+  private readonly bracers: THREE.Mesh[] = [];
+  private armorKey = '';
   private readonly bladeRot = new THREE.Vector3();
   private readonly bladeStart = { hand: new THREE.Vector3(), rot: new THREE.Vector3() };
   private lastBladeSwing: string | null = null;
-  private shown: WeaponId = 'flail';
 
   constructor() {
     const hemi = new THREE.HemisphereLight(0xd07050, 0x501408, 2.4);
@@ -246,23 +283,68 @@ export class ViewModel {
     this.rig.add(this.ball);
     this.flailParts.push(this.handle, ...this.links, this.ball);
 
-    // Other weapons, held in the right fist.
-    this.held = { sword: buildWeaponMesh('sword'), spear: buildWeaponMesh('spear'), axe: buildWeaponMesh('axe') };
-    for (const g of Object.values(this.held)) {
-      g.visible = false;
-      this.rig.add(g);
+    this.arrow = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
+    this.arrow.scale.set(0.025, 0.025, 1);
+    this.arrow.visible = false;
+    this.rig.add(this.arrow);
+
+    // Armor shows as bracers on the forearms.
+    for (let i = 0; i < 2; i++) {
+      const b = new THREE.Mesh(box, new THREE.MeshLambertMaterial({ flatShading: true }));
+      b.visible = false;
+      this.bracers.push(b);
+      this.rig.add(b);
     }
   }
 
-  /** Shows the right weapon in your hand. */
-  private show(id: WeaponId) {
-    if (id === this.shown) return;
-    this.shown = id;
-    for (const p of this.flailParts) p.visible = id === 'flail';
-    for (const [k, g] of Object.entries(this.held)) g.visible = k === id;
-    if (id === 'flail') this.settled = false;
-    else this.bladeRot.set(...BLADE_REST[id].rot);
+  /** Shows the right weapon in your hand, glowing if it's enchanted. */
+  private show(w: Weapon) {
+    const key = `${w.id}|${w.enchant ?? ''}`;
+    if (key === this.shownKey) return;
+    const sameKind = this.shownKey.split('|')[0] === w.id;
+    this.shownKey = key;
+    for (const p of this.flailParts) p.visible = w.id === 'flail';
+    if (this.current) this.current.visible = false;
+    this.current = null;
+    if (w.id !== 'flail') {
+      let g = this.held.get(key);
+      if (!g) {
+        g = buildWeaponMesh(w.id, w.enchant);
+        this.held.set(key, g);
+        this.rig.add(g);
+      }
+      g.visible = true;
+      this.current = g;
+    }
+    if (sameKind) return;
+    if (w.id === 'flail') this.settled = false;
+    else {
+      this.bladeRot.set(...BLADE_REST[w.id].rot);
+      this.hand.set(...BLADE_REST[w.id].hand);
+    }
     this.lastBladeSwing = null;
+  }
+
+  /** Bracers in the armor's color (glowing if enchanted), or bare arms. */
+  private wear(a: Armor | null) {
+    const key = a ? `${a.id}|${a.enchant ?? ''}` : '';
+    if (key === this.armorKey) return;
+    this.armorKey = key;
+    for (const b of this.bracers) {
+      b.visible = !!a;
+      if (!a) continue;
+      const m = b.material as THREE.MeshLambertMaterial;
+      m.color.set(ARMORS[a.id].color);
+      m.emissive.set(a.enchant ? ARMOR_ENCHANTS[a.enchant].color : 0).multiplyScalar(0.35);
+    }
+  }
+
+  /** Places a bracer along the forearm, from partway down the arm to the wrist. */
+  private placeBracer(b: THREE.Mesh, shoulder: THREE.Vector3, hand: THREE.Vector3) {
+    const from = tmpA.lerpVectors(shoulder, hand, 0.62).clone();
+    const to = tmpA.lerpVectors(shoulder, hand, 0.94).clone();
+    span(b, from, to);
+    b.scale.x = b.scale.y = 0.135;
   }
 
   /**
@@ -273,7 +355,8 @@ export class ViewModel {
   update(
     dt: number,
     camera: THREE.Camera,
-    weapon: WeaponId,
+    weapon: Weapon,
+    armor: Armor | null,
     swingInfo: { anim: string; t: number } | null,
     bob: number,
     phase: number,
@@ -283,6 +366,7 @@ export class ViewModel {
     this.rig.quaternion.copy(camera.quaternion);
     this.rig.updateMatrixWorld();
     this.show(weapon);
+    this.wear(armor);
 
     // The arms lag a little behind fast turns.
     this.sway.x = clamp(this.sway.x * (1 - smoothing(10, dt)) - lookDelta.x * 0.0004, -0.08, 0.08);
@@ -290,8 +374,9 @@ export class ViewModel {
     const bobX = Math.sin(phase) * 0.025 * bob + this.sway.x;
     const bobY = -Math.abs(Math.cos(phase)) * 0.025 * bob + this.sway.y;
 
-    if (weapon !== 'flail') {
-      this.updateBlade(dt, weapon, swingInfo, bobX, bobY);
+    this.arrow.visible = false;
+    if (weapon.id !== 'flail') {
+      this.updateBlade(dt, weapon.id, swingInfo, bobX, bobY);
       return;
     }
     const swing = swingInfo && (swingInfo.anim === 'smash' || swingInfo.anim === 'sweep') ? { kind: swingInfo.anim as SwingKind, t: swingInfo.t } : null;
@@ -322,6 +407,8 @@ export class ViewModel {
     this.handL.position.copy(left);
     span(this.armL, SHOULDER_L, left);
     this.handL.quaternion.copy(this.armL.quaternion);
+    this.placeBracer(this.bracers[0], SHOULDER_R, hand);
+    this.placeBracer(this.bracers[1], SHOULDER_L, left);
 
     // At rest the handle is held upright; mid-swing it points along the chain.
     const toBall = tmpA.subVectors(this.ballLocal, hand);
@@ -369,16 +456,33 @@ export class ViewModel {
     this.handR.position.copy(hand);
     span(this.armR, SHOULDER_R, hand);
     this.handR.quaternion.copy(this.armR.quaternion);
-    const g = this.held[id];
-    g.position.copy(hand);
-    g.quaternion.setFromEuler(euler.set(this.bladeRot.x, this.bladeRot.y, this.bladeRot.z));
-
-    const left = tmpC.copy(REST_LEFT);
+    const g = this.current;
+    const bow = id === 'bow';
+    const left = tmpC.copy(bow ? BOW_HAND : REST_LEFT);
     left.x += bobX * 0.8;
-    left.y += bobY * 1.2 - (swing ? 0.12 : 0);
+    left.y += bobY * (bow ? 1 : 1.2) - (swing && !bow ? 0.12 : 0);
     this.handL.position.copy(left);
     span(this.armL, SHOULDER_L, left);
     this.handL.quaternion.copy(this.armL.quaternion);
+    this.placeBracer(this.bracers[0], SHOULDER_R, hand);
+    this.placeBracer(this.bracers[1], SHOULDER_L, left);
+    if (!g) return;
+
+    if (bow) {
+      // The bow stands upright in the left fist, string toward you, canted a little.
+      g.position.copy(left);
+      g.quaternion.setFromEuler(euler.set(0, PI, -0.3));
+      g.scale.setScalar(1.4);
+      // An arrow sits on the string until it's loosed, and a new one is nocked after.
+      const loosed = swing && swing.t > 0.6 && swing.t < 0.85;
+      this.arrow.visible = !loosed;
+      if (!loosed) span(this.arrow, hand.clone(), left.clone().add(new THREE.Vector3(0.02, 0.02, -0.25)));
+      return;
+    }
+    // A thrown javelin is gone from your hand until the next one is drawn.
+    g.visible = !(id === 'javelin' && swing && swing.t > 0.5 && swing.t < 0.85);
+    g.position.copy(hand);
+    g.quaternion.setFromEuler(euler.set(this.bladeRot.x, this.bladeRot.y, this.bladeRot.z));
   }
 
   /** Follows the swing's key positions, remembering the speed for when it lets go. */

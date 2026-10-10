@@ -156,7 +156,7 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 1. ✅ **Core feel:** first-person camera, plane 1 terrain (lava rivers, fire geysers), spiked-flail combat against chained training angels, and the dog following and attacking (bite and horn charge).
 2. ✅ **Hero and HUD:** name entry (demon and dog), health, hellfire, XP, gold, leveling, saving, fire breath and ground spikes; the dog's horn charge (level 5) and fire breath (level 10).
 3. ✅ **First plane playable:** angel types (footsoldier, archer, priest, captain), Malphas's lair, three main missions (one of each type) and repeatable side missions, imp allies, stealth and silent kills, weapon drops (sword, spear, axe), the treasure chest on the geyser pillar, death and respawn, saving, and returning to the lair from the pause menu.
-4. **Armory and gear:** weaponsmith, armorer, weapon variety, enchantments.
+4. ✅ **Armory and gear:** the armory in the pause menu (weaponsmith, armorer, selling), eight weapons including the longbow and javelins, three kinds of armor, three weapon and four armor enchantments, and natural armor at level 50.
 5. **Planes 2–9:** themes, ranks, travel between planes, size change and flight, size puzzles.
 6. **Plane 10 and the ending:** the general, Demon Lord ending, endless missions.
 7. **Polish:** music, sound, balancing, title screen, GitHub Pages deploy.

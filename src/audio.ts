@@ -521,6 +521,35 @@ export const sfx = {
     tone(a, 'triangle', 1700, 1500, t, 0.15).connect(envelope(a, t, 0.06 * vol, 0.002, 0.15));
   },
 
+  /** Loosing an arrow (twang) or hurling a javelin (whoosh). */
+  shoot(heavy = false) {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    if (heavy) {
+      const f = filter(a, 'bandpass', 500, 1.2);
+      f.frequency.setValueAtTime(400, t);
+      f.frequency.exponentialRampToValueAtTime(1600, t + 0.25);
+      noiseSource(a, t, 0.35).connect(f).connect(envelope(a, t, 0.5, 0.05, 0.3));
+    } else {
+      tone(a, 'triangle', 180, 90, t, 0.15).connect(envelope(a, t, 0.35, 0.002, 0.15));
+      noiseSource(a, t, 0.2).connect(filter(a, 'bandpass', 2500, 2)).connect(envelope(a, t, 0.15, 0.005, 0.18));
+    }
+  },
+
+  /** Buying at the armory: coins counted onto the counter. */
+  buy() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    for (let i = 0; i < 4; i++) {
+      const s = t + i * 0.06;
+      const f = 1300 + i * 150;
+      tone(a, 'square', f, f, s, 0.05).connect(filter(a, 'lowpass', 4000)).connect(envelope(a, s, 0.05, 0.002, 0.06));
+    }
+    tone(a, 'sine', 110, 80, t, 0.25).connect(envelope(a, t, 0.3, 0.005, 0.25));
+  },
+
   click() {
     const a = ready();
     if (!a) return;

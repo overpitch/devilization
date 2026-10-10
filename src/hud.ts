@@ -3,7 +3,8 @@ import type { Settings } from './settings';
 import type { SaveData } from './save';
 import { sfx } from './audio';
 import { RANKS, UNLOCK } from './progression';
-import { weaponName, type Weapon } from './weapons';
+import { armorName, WEAPON_ENCHANTS, weaponName, type Armor, type Weapon } from './weapons';
+import type { ArmoryRow, ArmoryTab } from './armory';
 import type { Dialog } from './campaign';
 import * as THREE from 'three';
 
@@ -12,7 +13,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const CONTROLS: [string, string][] = [
   ['W A S D', 'Move'],
   ['Mouse', 'Look'],
-  ['Click or J', 'Swing the flail (click again to chain)'],
+  ['Click or J', 'Attack: swing, shoot or throw (click again to chain)'],
   ['F (hold)', `Breathe fire (level ${UNLOCK.fireBreath})`],
   ['R (hold)', `Aim ground spikes, let go to strike (level ${UNLOCK.spikes})`],
   ['E', 'Talk, take, open'],
@@ -20,7 +21,7 @@ const CONTROLS: [string, string][] = [
   ['1-4 or Q', 'Switch weapon'],
   ['Space', 'Jump'],
   ['Shift', 'Sprint'],
-  ['Esc', 'Pause (and return to the lair)'],
+  ['Esc', 'Pause: armory, options, return to the lair'],
 ];
 
 const KIND_TAG = { war: 'War front', retrieve: 'Retrieval', assassinate: 'Assassination' } as const;
@@ -59,6 +60,9 @@ export class Hud {
   onRespawn?: () => void;
   onSettings?: (s: Settings) => void;
   onReturnToLair?: () => void;
+  onArmoryOpen?: () => void;
+  onArmoryClose?: () => void;
+  onArmoryTab?: (tab: ArmoryTab) => void;
   onRulerClose?: () => void;
 
   private readonly hud = $('hud');
@@ -117,6 +121,14 @@ export class Hud {
     click('quit-btn', () => this.onQuit?.());
     click('respawn-btn', () => this.onRespawn?.());
     click('lair-btn', () => this.onReturnToLair?.());
+    click('armory-btn', () => this.onArmoryOpen?.());
+    click('armory-close-btn', () => this.onArmoryClose?.());
+    for (const tab of document.querySelectorAll<HTMLButtonElement>('#armory-screen .tab')) {
+      tab.addEventListener('click', () => {
+        sfx.click();
+        this.onArmoryTab?.(tab.dataset.tab as ArmoryTab);
+      });
+    }
     click('ruler-close-btn', () => this.onRulerClose?.());
 
     click('random-name-btn', () => {
@@ -304,13 +316,58 @@ export class Hud {
     });
   }
 
-  setWeapons(weapons: Weapon[], equipped: number) {
-    const key = weapons.map((w) => `${w.id}${w.quality}`).join(',') + `|${equipped}`;
+  setWeapons(weapons: Weapon[], equipped: number, armor: Armor | null, reduction: number) {
+    const key = weapons.map((w) => `${w.id}${w.quality}${w.enchant ?? ''}`).join(',') + `|${equipped}`;
     this.set('weapons', key, () => {
       $('weapons').innerHTML = weapons
-        .map((w, i) => `<div class="weapon-slot${i === equipped ? ' equipped' : ''}"><b>${i + 1}</b>${esc(weaponName(w))}</div>`)
+        .map((w, i) => {
+          const color = w.enchant ? ` style="color:#${WEAPON_ENCHANTS[w.enchant].color.toString(16).padStart(6, '0')}"` : '';
+          return `<div class="weapon-slot${i === equipped ? ' equipped' : ''}"><b>${i + 1}</b><span${color}>${esc(weaponName(w))}</span></div>`;
+        })
         .join('');
     });
+    const line = armor ? `${armorName(armor)} · ${Math.round(reduction * 100)}% less damage` : reduction > 0 ? `Natural armor · ${Math.round(reduction * 100)}% less damage` : '';
+    this.set('armor', line, (v) => ($('armor-line').textContent = v ? `Armor: ${v}` : ''));
+  }
+
+  /** The armory: tabs, your gold, and a row per item with its button. */
+  showArmory(view: { tab: ArmoryTab; gold: number; rows: ArmoryRow[]; message: string } | null) {
+    $('armory-screen').classList.toggle('hidden', !view);
+    if (!view) return;
+    for (const tab of document.querySelectorAll<HTMLButtonElement>('#armory-screen .tab')) tab.classList.toggle('active', tab.dataset.tab === view.tab);
+    $('armory-gold').textContent = `${view.gold} gold`;
+    $('armory-message').textContent = view.message;
+    const list = $('armory-rows');
+    list.innerHTML = '';
+    if (view.rows.length === 0) list.innerHTML = '<p class="speech">Nothing here.</p>';
+    for (const r of view.rows) {
+      const el = document.createElement('div');
+      el.className = 'card';
+      const h = document.createElement('h3');
+      h.textContent = r.title;
+      if (r.color !== undefined) h.style.color = `#${r.color.toString(16).padStart(6, '0')}`;
+      const b = document.createElement('button');
+      b.textContent = r.button;
+      b.disabled = !!r.blocked;
+      b.addEventListener('click', () => r.act());
+      el.append(h, b);
+      for (const line of r.lines) {
+        const p = document.createElement('p');
+        p.textContent = line;
+        el.appendChild(p);
+      }
+      if (r.blocked) {
+        const why = document.createElement('div');
+        why.className = 'reason';
+        why.textContent = r.blocked;
+        el.appendChild(why);
+      }
+      list.appendChild(el);
+    }
+  }
+
+  get armoryOpen() {
+    return !$('armory-screen').classList.contains('hidden');
   }
 
   setCarrying(name: string | null) {

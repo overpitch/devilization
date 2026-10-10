@@ -22,6 +22,7 @@ import { Pickups } from './pickups';
 import { loadSave, newSave, useTestSaveSlot, writeSave, type SaveData } from './save';
 import { MAX_LEVEL, RANKS, unlocksAt, xpToNext } from './progression';
 import { weaponName, type Weapon } from './weapons';
+import { Armory, type ArmoryTab } from './armory';
 import type { Foe, GameContext } from './types';
 
 const params = new URLSearchParams(location.search);
@@ -61,6 +62,8 @@ const cam = new FirstPersonCamera(camera);
 const input = new Input(renderer.domElement);
 const hud = new Hud(settings);
 const floaters = new Floaters(hud.floaterLayer);
+const armory = new Armory();
+let armoryTab: ArmoryTab = 'weapons';
 
 player.ballAt = () => viewModel.ballWorld;
 player.onLand = (speed) => cam.addShake(Math.min(speed / 50, 0.3));
@@ -153,6 +156,8 @@ const campaign = new Campaign(scene, {
     player.gold += gold;
     sfx.coin();
     awardXp(xp);
+    // The weaponsmith and armorer get new enchanted goods after every mission.
+    armory.restock();
   },
   announce: (title, detail) => hud.announce(title, detail),
   toast: (text) => hud.toast(text),
@@ -213,6 +218,7 @@ function saveGame() {
     playTime: Math.round(playTime),
     weapons: player.weapons,
     equipped: player.equipped,
+    armor: player.armor,
     missionsDone: [...campaign.done],
     sideDone: campaign.sideDone,
     chestOpened: campaign.chestOpened,
@@ -237,6 +243,8 @@ function enterWorld(save: SaveData) {
   player.loadHero(save.name, save.level, Math.min(save.xp, xpToNext(save.level)), save.gold, save.rank);
   player.weapons = save.weapons.map((w) => ({ ...w }));
   player.equipped = save.equipped;
+  player.armor = save.armor ? { ...save.armor } : null;
+  armory.restock();
   dog.name = save.dogName;
   kills = save.kills;
   playTime = save.playTime;
@@ -274,8 +282,27 @@ function lockPointer() {
   if (testMode) return;
   input.requestLock();
   setTimeout(() => {
-    if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen) hud.showPause(true);
+    if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen) hud.showPause(true);
   }, 1200);
+}
+
+/** Shows the armory (from the pause menu) on a tab, with a message about the last purchase. */
+function showArmory(message = '') {
+  hud.showArmory({
+    tab: armoryTab,
+    gold: player.gold,
+    message,
+    rows: armory.rows(armoryTab, player, (msg) => {
+      sfx.buy();
+      saveGame();
+      showArmory(msg);
+    }),
+  });
+}
+
+function closeArmory() {
+  hud.showArmory(null);
+  hud.showPause(true);
 }
 
 function openRuler() {
@@ -320,6 +347,7 @@ hud.onQuit = () => {
   hud.showPause(false);
   hud.showDeath(false);
   hud.showRuler(null);
+  hud.showArmory(null);
   if (document.pointerLockElement) document.exitPointerLock();
   hud.fadeIn();
   hud.showTitle(loadSave());
@@ -340,13 +368,22 @@ hud.onRespawn = () => {
   lockPointer();
 };
 hud.onRulerClose = closeRuler;
+hud.onArmoryOpen = () => {
+  hud.showPause(false);
+  showArmory();
+};
+hud.onArmoryClose = closeArmory;
+hud.onArmoryTab = (tab) => {
+  armoryTab = tab;
+  showArmory();
+};
 hud.onSettings = (s) => {
   applySettings(s);
   saveSettings(s);
 };
 input.onLockChange = (locked) => {
   if (locked) hud.showPause(false);
-  else if (phase === 'playing' && player.alive && !hud.rulerOpen) {
+  else if (phase === 'playing' && player.alive && !hud.rulerOpen && !hud.armoryOpen) {
     player.stopPowers(ctx);
     saveGame();
     hud.showPause(true);
@@ -355,10 +392,11 @@ input.onLockChange = (locked) => {
 window.addEventListener('beforeunload', saveGame);
 // Clicking the game while paused resumes it.
 renderer.domElement.addEventListener('click', () => {
-  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen) lockPointer();
+  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen) lockPointer();
 });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && hud.rulerOpen) closeRuler();
+  else if (e.code === 'Escape' && hud.armoryOpen) closeArmory();
 });
 
 window.addEventListener('resize', () => {
@@ -441,7 +479,7 @@ function nearestInteractable(): Interactable | null {
 
 /** Advances the game by one frame of `realDt` seconds. */
 function tick(realDt: number) {
-  const playing = phase === 'playing' && (input.locked || testMode) && !hud.rulerOpen;
+  const playing = phase === 'playing' && (input.locked || testMode) && !hud.rulerOpen && !hud.armoryOpen;
   foes.length = 0;
   for (const a of trainingAngels) foes.push(a);
   for (const f of fighters) if (f.side === 'heaven') foes.push(f);
@@ -498,7 +536,7 @@ function tick(realDt: number) {
   } else {
     cam.update(realDt, player.eye(eye), player.bob, player.walkPhase, player.sprinting);
     camera.updateMatrixWorld();
-    viewModel.update(playing ? realDt : 0, camera, player.weaponId, player.swingInfo, player.bob, player.walkPhase, { x: input.mouseDX, y: input.mouseDY });
+    viewModel.update(playing ? realDt : 0, camera, player.weapon, player.armor, player.swingInfo, player.bob, player.walkPhase, { x: input.mouseDX, y: input.mouseDY });
   }
   floaters.update(realDt, camera);
   // The breath lights the ground in front of you, flickering.
@@ -525,7 +563,7 @@ function tick(realDt: number) {
   if (phase === 'playing') {
     const o = campaign.objective(player.level);
     hud.setObjective(o.text, o.at, camera, player.pos);
-    hud.setWeapons(player.weapons, player.equipped);
+    hud.setWeapons(player.weapons, player.equipped, player.armor, player.armorReduction);
     hud.setCarrying(campaign.carrying);
     if (hud.pauseOpen) {
       const can = campaign.canReturnToLair(ctx);
@@ -584,6 +622,8 @@ Object.assign(window, {
     trainingAngels,
     fighters,
     campaign,
+    armory,
+    showArmory,
     geysers,
     spikes,
     pickups,
