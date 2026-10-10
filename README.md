@@ -58,7 +58,7 @@ Two people can play together on one screen, side by side. Player 2 needs a contr
 - **If Player 1 is on a controller:** Player 2 presses **A** on a second controller at any time.
 - **If Player 1 is on keyboard and mouse:** pause, choose **Add Player 2**, then Player 2 presses **A**.
 
-Player 2 arrives at your side as a demon of their own (purple, so you can tell each other apart) with their own hellhound. You share levels, XP, gold and missions; Player 2 starts with a copy of your gear and picks up weapons for themselves. If one of you falls, they claw back out of the pits beside the other after 8 seconds; if you both fall, you're banished to the lair as usual. Pause and choose **Remove Player 2** to go back to one player.
+Player 2 arrives at your side as a demon of their own (purple, so you can tell each other apart) with their own hellhound. Each of you has your own gold (as in Evil One): every coin and reward pays both of you in full, and each spends their own. You share levels, XP and missions; Player 2 starts with a copy of your gear and picks up weapons for themselves. If one of you falls, they claw back out of the pits beside the other after 8 seconds; if you both fall, you're banished to the lair as usual. Pause and choose **Remove Player 2** to go back to one player.
 
 ## What's in so far
 
@@ -68,8 +68,15 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 - **Faster on Xbox:** each angel is drawn with about half as many pieces (the boxes on each limb are merged), so big battles cost roughly half the draw calls. Edge smoothing is off on Xbox, where it's expensive at TV resolution.
 - **Split screen:** Player 2 now sees angels' health bars, name tags and ? / ! marks too.
 - The pause menu's buttons fit their labels, and menus taller than the window scroll instead of being cut off.
-- **Difficulty** (Pause → Difficulty): **Easy** (angels hit 40% softer and have 25% less health; you heal faster), **Normal**, or **Hard** (angels hit 40% harder and have 30% more health; you heal slower, but get 25% more XP). Changes apply to angels that appear afterwards.
+- **Difficulty** (Pause → Difficulty): **Easy** (angels hit 40% softer and have 25% less health; you heal faster), **Normal** (angels hit 25% harder and have 20% more health than before), **Hard** (70% harder hits, 50% more health, slow healing, 25% more XP) or **Nightmare** (2.3× hits, twice the health, very slow healing, 50% more XP). Damage changes at once; angels' health changes for angels that appear afterwards.
 - **Trophies and bestiary** (Pause → Trophies): 19 trophies with progress, from First Blood to Demon Lord, announced as you earn them; and a bestiary of every kind of angel you've slain, with counts. (Kills from before this update aren't in the bestiary; trophies that only need totals, like kills, levels and chests, are earned straight away.)
+- **Map** (M, or View on a controller): the whole plane, north up, with you (and your partner), the ruler, the Hellgate, the unopened chest, the objective, mission targets and angels near you.
+- **Trading stands** in every ruler's lair, along the west side of the courtyard. Walk up to a counter and press E (X on a controller); B or Esc leaves.
+  - **The Brimstone Brewer:** Hellfire Draughts that heal half your health. Carry up to 5; drink with H (D-pad down).
+  - **The Weaponsmith:** buy weapons, or sell yours.
+  - **The Armorer:** buy armor, or sell yours.
+  - **The Imp Pens:** hire up to 5 imps that follow you between planes and fight any angel that's fighting you. They keep quiet while you sneak. A fallen imp is gone for good.
+  - Prices rise on deeper planes. In split screen each player shops with their own gold, and the shop covers only the shopper's half of the screen while the other player keeps playing.
 - **Saved co-op:** Player 2's name, hellhound and gear are saved, so the next time a second controller joins, the same demon comes back.
 
 ### Phase 10
@@ -222,6 +229,8 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 | `src/menuNav.ts` | Driving the menus with a controller |
 | `src/minimap.ts` | The mini map |
 | `src/trophies.ts` | Trophies and the bestiary |
+| `src/worldMap.ts` | The full map |
+| `src/stands.ts` | The trading stands in the lair |
 | `src/mergeRig.ts` | Merges a character's boxes per limb, for fewer draw calls |
 | `src/avatar.ts` | A demon's body as the other player sees it in split screen |
 | `src/hud2.ts` | Player 2's half of the screen |

@@ -63,6 +63,7 @@
       <div class="gear-panel">
         <div class="weapons" id="weapons"></div>
         <div class="armor-line" id="armor-line"></div>
+        <div class="armor-line potion-line" id="potion-line"></div>
       </div>
       <div class="crosshair"></div>
       <div class="prompt hidden" id="prompt"></div>
@@ -156,7 +157,7 @@
         <div class="options">
           <label class="option">
             <span>Difficulty</span>
-            <input type="range" id="difficulty" min="0" max="2" step="1" value="1" />
+            <input type="range" id="difficulty" min="0" max="3" step="1" value="1" />
             <output id="difficulty-value">Normal</output>
           </label>
           <p class="difficulty-note" id="difficulty-note"></p>
@@ -198,19 +199,41 @@
     <!-- Armory -->
     <div id="armory-screen" class="overlay hidden">
       <div class="panel armory">
-        <h2>The Armory</h2>
-        <p class="subtitle">Weaponsmith and armorer of the First Plane</p>
+        <h2 id="armory-title">The Armory</h2>
+        <p class="subtitle" id="armory-subtitle">Weaponsmith and armorer of the First Plane</p>
         <div class="armory-top">
           <div class="tabs" role="tablist">
             <button class="tab" data-tab="weapons">Weaponsmith</button>
             <button class="tab" data-tab="armor">Armorer</button>
             <button class="tab" data-tab="gear">Your gear</button>
+            <button class="tab" data-tab="potions">Draughts</button>
+            <button class="tab" data-tab="imps">Imps</button>
           </div>
           <div class="gold armory-gold" id="armory-gold"></div>
         </div>
         <p class="armory-message" id="armory-message"></p>
         <div class="cards" id="armory-rows"></div>
         <button id="armory-close-btn" class="secondary">Back</button>
+      </div>
+    </div>
+
+    <!-- The map -->
+    <div id="map-screen" class="overlay hidden">
+      <div class="panel map">
+        <h2 id="map-title"></h2>
+        <p class="subtitle" id="map-subtitle"></p>
+        <canvas id="map-canvas" width="640" height="640"></canvas>
+        <p class="map-objective" id="map-objective"></p>
+        <div class="map-legend">
+          <span><i class="lg you"></i>You</span>
+          <span><i class="lg objective"></i>Objective</span>
+          <span><i class="lg ruler"></i>Ruler</span>
+          <span><i class="lg portal"></i>Hellgate</span>
+          <span><i class="lg chest"></i>Treasure</span>
+          <span><i class="lg angel"></i>Angels nearby</span>
+          <span><i class="lg hunting"></i>Hunting you</span>
+        </div>
+        <button id="map-close-btn" class="secondary">Back</button>
       </div>
     </div>
 

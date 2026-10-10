@@ -31,6 +31,11 @@ export class Minimap {
   private readonly g: CanvasRenderingContext2D;
   /** The whole plane, one pixel per metre, drawn once when the plane is built. */
   private base = document.createElement('canvas');
+
+  /** The whole plane, one pixel per metre (the full map draws it too). */
+  get ground() {
+    return this.base;
+  }
   private timer = 0;
 
   constructor(parent: HTMLElement) {
@@ -174,7 +179,7 @@ export class Minimap {
 }
 
 /** An arrowhead at (x, y), turned by `turn` radians from straight up (clockwise when positive). */
-function arrow(g: CanvasRenderingContext2D, x: number, y: number, turn: number, size: number, color: string) {
+export function arrow(g: CanvasRenderingContext2D, x: number, y: number, turn: number, size: number, color: string) {
   g.save();
   g.translate(x, y);
   g.rotate(-turn);

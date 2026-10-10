@@ -2,7 +2,7 @@ import { IS_XBOX } from './settings';
 
 /** Keys the browser should never act on while playing (e.g. Space scrolling the page). */
 const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyF', 'KeyR', 'KeyC', 'KeyJ', 'KeyM', 'KeyZ', 'KeyX', 'KeyQ',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyF', 'KeyR', 'KeyC', 'KeyJ', 'KeyM', 'KeyH', 'KeyZ', 'KeyX', 'KeyQ',
   'Digit1', 'Digit2', 'Digit3', 'Digit4',
   'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
 ]);
@@ -325,6 +325,16 @@ export class Input {
 
   get sprintHeld() {
     return this.key('ShiftLeft', 'ShiftRight') || this.padIsDown(PAD.LB, PAD.LS);
+  }
+
+  /** H, or d-pad down: drink a Hellfire Draught. */
+  get drinkPressed() {
+    return this.tap('KeyH') || this.padWasPressed(PAD.DOWN);
+  }
+
+  /** M, or the View button: the map. */
+  get mapPressed() {
+    return this.tap('KeyM') || this.padWasPressed(PAD.VIEW);
   }
 
   get pausePressed() {

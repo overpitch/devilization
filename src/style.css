@@ -1308,3 +1308,82 @@ h1.victory {
   font-size: 12px;
   color: #ff9a50;
 }
+
+/* ---------- The map ---------- */
+
+.panel.map {
+  width: min(720px, 94vw);
+  max-width: none;
+}
+
+#map-canvas {
+  display: block;
+  width: min(62vh, 86vw);
+  height: min(62vh, 86vw);
+  margin: 0 auto;
+  image-rendering: pixelated;
+  border: 2px solid rgba(255, 170, 120, 0.45);
+  border-radius: 4px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+}
+
+.map-objective {
+  margin: 10px 0 6px;
+  color: #ffd040;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: rgba(242, 226, 208, 0.8);
+}
+
+.map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lg {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #000;
+}
+
+.lg.you { background: #ffd040; clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%); border: 0; }
+.lg.objective { background: #ffd040; transform: rotate(45deg) scale(0.85); }
+.lg.ruler { background: #ff6030; }
+.lg.portal { border: 2px solid #c060ff; border-radius: 50%; background: transparent; }
+.lg.chest { background: #ffd040; }
+.lg.angel { background: #f0ece0; border-radius: 50%; }
+.lg.hunting { background: #ff3a30; border-radius: 50%; }
+
+/* A trading stand with one kind of goods has no tab bar. */
+#armory-screen .tabs.hidden,
+#armory-screen .tab.hidden {
+  display: none;
+}
+
+/* Two-player: a trading stand covers only the shopper's half of the screen. */
+#armory-screen.half-left {
+  right: 50%;
+}
+
+#armory-screen.half-right {
+  left: 50%;
+}
+
+#armory-screen.half-left .panel.armory,
+#armory-screen.half-right .panel.armory {
+  width: 46vw;
+  padding: 20px 18px;
+}
+
+.gold2 {
+  color: #ffd040;
+}

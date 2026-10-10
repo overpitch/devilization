@@ -35,6 +35,10 @@ export interface SaveData {
   deepest: number;
   /** Player 2 in split screen, kept so they come back as themselves. */
   player2: Player2Save | null;
+  /** Hellfire Draughts carried. */
+  potions: number;
+  /** Hired imps following you. */
+  imps: number;
   savedAt: number;
 }
 
@@ -44,6 +48,9 @@ export interface Player2Save {
   weapons: Weapon[];
   equipped: number;
   armor: Armor | null;
+  potions?: number;
+  /** Player 2's own gold (each player has their own purse). */
+  gold?: number;
 }
 
 /** Fields added after phase 2, with their starting values. */
@@ -61,6 +68,8 @@ const LATER_FIELDS = () => ({
   trophies: [] as string[],
   deepest: 1,
   player2: null as Player2Save | null,
+  potions: 0,
+  imps: 0,
 });
 
 let key = 'devilization.save';
@@ -111,6 +120,9 @@ export function loadSave(): SaveData | null {
     if (!Number.isInteger(save.deepest)) save.deepest = Math.min(10, Math.max(save.plane, save.rank + 1));
     save.deepest = Math.max(save.deepest, save.plane);
     save.player2 = cleanPlayer2(save.player2);
+    const count = (v: unknown) => (typeof v === 'number' && v >= 0 ? Math.min(5, Math.floor(v)) : 0);
+    save.potions = count(save.potions);
+    save.imps = count(save.imps);
     return save;
   } catch {
     return null;
@@ -123,7 +135,9 @@ function cleanPlayer2(p: unknown): Player2Save | null {
   const weapons = d.weapons.filter(isWeapon);
   if (weapons.length === 0) weapons.push({ ...STARTING_WEAPON });
   const equipped = Number.isInteger(d.equipped) && d.equipped! >= 0 && d.equipped! < weapons.length ? d.equipped! : 0;
-  return { name: d.name, dogName: d.dogName, weapons, equipped, armor: isArmor(d.armor) ? d.armor : null };
+  const potions = typeof d.potions === 'number' && d.potions >= 0 ? Math.min(5, Math.floor(d.potions)) : 0;
+  const gold = typeof d.gold === 'number' && d.gold >= 0 ? Math.floor(d.gold) : 0;
+  return { name: d.name, dogName: d.dogName, weapons, equipped, armor: isArmor(d.armor) ? d.armor : null, potions, gold };
 }
 
 export function writeSave(data: SaveData) {

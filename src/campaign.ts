@@ -73,7 +73,9 @@ export interface Interactable {
   /** How close you must be. */
   range: number;
   /** The ruler and the Hellgate open dialogs (through main). */
-  kind?: 'ruler' | 'portal';
+  kind?: 'ruler' | 'portal' | 'stand';
+  /** Which trading stand (kind 'stand'). */
+  stand?: import('./stands').StandId;
   act(): void;
 }
 

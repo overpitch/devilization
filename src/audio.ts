@@ -188,6 +188,17 @@ export const sfx = {
   },
 
   /** The ball thudding into the ground. */
+  /** Glugging down a draught. */
+  drink() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    for (let i = 0; i < 3; i++) {
+      tone(a, 'sine', 220 - i * 20, 120 - i * 10, t + i * 0.16, 0.12).connect(envelope(a, t + i * 0.16, 0.35, 0.01, 0.12));
+    }
+    tone(a, 'triangle', 600, 1200, t + 0.5, 0.25).connect(envelope(a, t + 0.5, 0.12, 0.01, 0.25));
+  },
+
   /** Lub-dub: your heart pounding when you're close to death. */
   heartbeat(vol = 1) {
     const a = ready();

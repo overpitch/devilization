@@ -26,7 +26,28 @@ import {
  * mission you finish.
  */
 
-export type ArmoryTab = 'weapons' | 'armor' | 'gear';
+export type ArmoryTab = 'weapons' | 'armor' | 'gear' | 'potions' | 'imps';
+
+/** Hellfire draughts you can carry. */
+export const MAX_POTIONS = 5;
+/** A draught heals this share of your health. */
+export const POTION_HEAL = 0.5;
+/** Imps you can have following you. */
+export const MAX_IMPS = 5;
+
+/** What the stands need besides the shopper: who pays, and the imps you have. */
+export interface ShopContext {
+  /** Whose gold pays (in split screen both players share Player 1's purse). */
+  purse: { gold: number };
+  /** Imps following you now. */
+  imps: number;
+  hireImp(): void;
+  /** Deeper planes charge more for draughts and imps. */
+  power: number;
+}
+
+export const potionPrice = (power: number) => Math.round(25 * power);
+export const impPrice = (power: number) => Math.round(60 * power);
 
 /** One row in the armory's list. */
 export interface ArmoryRow {
@@ -64,7 +85,48 @@ export class Armory {
   }
 
   /** The rows for a tab. `changed` runs after anything is bought, sold or equipped. */
-  rows(tab: ArmoryTab, player: Player, changed: (message: string) => void): ArmoryRow[] {
+  rows(tab: ArmoryTab, player: Player, changed: (message: string) => void, shop: ShopContext): ArmoryRow[] {
+    const purse = shop.purse;
+    if (tab === 'potions') {
+      const price = potionPrice(shop.power);
+      return [
+        {
+          title: 'Hellfire Draught',
+          lines: [
+            `Heals half your health in one gulp. Drink with H (D-pad down on a controller).`,
+            `You carry ${player.potions} of ${MAX_POTIONS}.`,
+          ],
+          button: `Buy · ${price} gold`,
+          blocked: purse.gold < price ? 'Not enough gold' : player.potions >= MAX_POTIONS ? `You can carry ${MAX_POTIONS}` : undefined,
+          act: () => {
+            if (purse.gold < price || player.potions >= MAX_POTIONS) return;
+            purse.gold -= price;
+            player.potions++;
+            changed('Bought a Hellfire Draught');
+          },
+        },
+      ];
+    }
+    if (tab === 'imps') {
+      const price = impPrice(shop.power);
+      return [
+        {
+          title: 'Hire an imp',
+          lines: [
+            'A spear-carrying imp that follows you and fights any angel that fights you. It stays with you until it falls.',
+            `Imps with you: ${shop.imps} of ${MAX_IMPS}.`,
+          ],
+          button: `Hire · ${price} gold`,
+          blocked: purse.gold < price ? 'Not enough gold' : shop.imps >= MAX_IMPS ? `At most ${MAX_IMPS} imps follow you` : undefined,
+          act: () => {
+            if (purse.gold < price || shop.imps >= MAX_IMPS) return;
+            purse.gold -= price;
+            shop.hireImp();
+            changed('An imp joins you');
+          },
+        },
+      ];
+    }
     if (tab === 'weapons') {
       return this.weapons.map((w) => {
         const price = weaponPrice(w);
@@ -77,10 +139,10 @@ export class Armory {
             ...(w.enchant ? [WEAPON_ENCHANTS[w.enchant].effect] : []),
           ],
           button: `Buy · ${price} gold`,
-          blocked: player.gold < price ? 'Not enough gold' : full ? `You can carry ${MAX_WEAPONS}: sell one first` : undefined,
+          blocked: purse.gold < price ? 'Not enough gold' : full ? `You can carry ${MAX_WEAPONS}: sell one first` : undefined,
           act: () => {
-            if (player.gold < price || player.weapons.length >= MAX_WEAPONS) return;
-            player.gold -= price;
+            if (purse.gold < price || player.weapons.length >= MAX_WEAPONS) return;
+            purse.gold -= price;
             player.takeWeapon({ ...w });
             if (w.enchant) this.weapons = this.weapons.filter((x) => x !== w); // enchanted goods are one of a kind
             changed(`Bought ${weaponName(w)}`);
@@ -102,10 +164,10 @@ export class Armory {
             ...(player.armor ? [`Your ${armorName(player.armor)} is traded in for ${tradeIn} gold.`] : []),
           ],
           button: `Buy · ${price} gold`,
-          blocked: player.gold < price ? 'Not enough gold' : undefined,
+          blocked: purse.gold < price ? 'Not enough gold' : undefined,
           act: () => {
-            if (player.gold < price) return;
-            player.gold -= price;
+            if (purse.gold < price) return;
+            purse.gold -= price;
             player.armor = { ...a };
             if (a.enchant) this.armors = this.armors.filter((x) => x !== a);
             changed(`Now wearing ${armorName(a)}`);
@@ -125,7 +187,7 @@ export class Armory {
         blocked: player.weapons.length <= 1 ? 'You need at least one weapon' : undefined,
         act: () => {
           if (player.weapons.length <= 1) return;
-          player.gold += price;
+          purse.gold += price;
           player.weapons.splice(i, 1);
           if (player.equipped >= i && player.equipped > 0) player.equipped--;
           changed(`Sold ${weaponName(w)}`);
@@ -141,7 +203,7 @@ export class Armory {
         lines: [`Stops ${Math.round(ARMORS[a.id].reduction * 100)}% of damage.`, ...(a.enchant ? [ARMOR_ENCHANTS[a.enchant].effect] : [])],
         button: `Sell · ${price} gold`,
         act: () => {
-          player.gold += price;
+          purse.gold += price;
           player.armor = null;
           changed(`Sold ${armorName(a)}`);
         },

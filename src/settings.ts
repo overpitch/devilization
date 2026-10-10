@@ -3,7 +3,7 @@
  * device keeps their own choices.
  */
 export type Graphics = 'high' | 'low';
-export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'nightmare';
 
 export interface DifficultyProfile {
   label: string;
@@ -20,10 +20,11 @@ export interface DifficultyProfile {
 
 export const DIFFICULTIES: { [d in Difficulty]: DifficultyProfile } = {
   easy: { label: 'Easy', description: 'Angels hit softer and fall faster. You heal quickly.', enemyDamage: 0.6, enemyHealth: 0.75, regen: 1.6, xp: 1 },
-  normal: { label: 'Normal', description: 'The intended challenge.', enemyDamage: 1, enemyHealth: 1, regen: 1, xp: 1 },
-  hard: { label: 'Hard', description: 'Angels hit harder and take more killing, but give 25% more XP.', enemyDamage: 1.4, enemyHealth: 1.3, regen: 0.8, xp: 1.25 },
+  normal: { label: 'Normal', description: 'The intended challenge: angels hit hard and take some killing.', enemyDamage: 1.25, enemyHealth: 1.2, regen: 1, xp: 1 },
+  hard: { label: 'Hard', description: 'Angels hit much harder and take far more killing. You heal slowly, but get 25% more XP.', enemyDamage: 1.7, enemyHealth: 1.5, regen: 0.7, xp: 1.25 },
+  nightmare: { label: 'Nightmare', description: 'Heaven at its worst: brutal blows, angels twice as tough, and slow healing. 50% more XP.', enemyDamage: 2.3, enemyHealth: 2, regen: 0.5, xp: 1.5 },
 };
-export const DIFFICULTY_ORDER: Difficulty[] = ['easy', 'normal', 'hard'];
+export const DIFFICULTY_ORDER: Difficulty[] = ['easy', 'normal', 'hard', 'nightmare'];
 
 export interface Settings {
   /** Look speed multiplier for mouse and trackpad. */

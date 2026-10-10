@@ -149,6 +149,10 @@ export interface SpawnOptions {
   power?: number;
   /** Multiplies health (the difficulty setting). */
   toughness?: number;
+  /** A hired imp: follows whoever this returns, and only fights angels that are already fighting. */
+  escort?: () => THREE.Vector3;
+  /** Its place in the escort (spreads them out around you). */
+  escortSlot?: number;
 }
 
 export class Fighter implements Foe, HellBody {
@@ -172,6 +176,9 @@ export class Fighter implements Foe, HellBody {
   assassinated = false;
   /** 0..1: how sure it is that it saw you. */
   suspicion = 0;
+  /** Hired imps follow this (their leader's position). */
+  readonly escort: (() => THREE.Vector3) | null;
+  private readonly escortSlot: number;
   /** The demon it's most suspicious of. */
   private noticed: { readonly pos: THREE.Vector3 } = { pos: new THREE.Vector3() };
   readonly label: string | null;
@@ -227,6 +234,8 @@ export class Fighter implements Foe, HellBody {
     this.home.copy(this.pos);
     this.patrol = opts.patrol ?? null;
     this.goal = opts.goal ?? null;
+    this.escort = opts.escort ?? null;
+    this.escortSlot = opts.escortSlot ?? 0;
     this.guardYaw = this.yaw = opts.facing ?? Math.random() * Math.PI * 2;
 
     this.h = createHumanoid(def.look);
@@ -537,9 +546,9 @@ export class Fighter implements Foe, HellBody {
     } else {
       this.suspicion = Math.max(0, this.suspicion - dt * (ctx.players.some((q) => q.alive) ? 0.15 : 0.3));
     }
-    // Imps charging in are hard to miss.
+    // Imps charging in are hard to miss (hired imps tagging along quietly aren't).
     for (const f of ctx.fighters) {
-      if (f.side === 'hell' && f.alive && f.pos.distanceTo(this.pos) < 14) {
+      if (f.side === 'hell' && f.alive && (!f.escort || f.target) && f.pos.distanceTo(this.pos) < 14) {
         this.becomeAlert(ctx, f, true);
         return;
       }
@@ -565,6 +574,12 @@ export class Fighter implements Foe, HellBody {
       for (const d of ctx.dogs) consider(d);
       for (const f of ctx.fighters) if (f.side === 'hell') consider(f);
       return bestD < 30 ? best : null;
+    }
+    if (this.escort) {
+      // Hired imps stick near their leader and only join fights already under way.
+      const lead = this.escort();
+      for (const f of ctx.fighters) if (f.side === 'heaven' && f.state === 'alert' && f.pos.distanceTo(lead) < 20) consider(f);
+      return best;
     }
     for (const f of ctx.fighters) if (f.side === 'heaven') consider(f);
     return bestD < this.def.sight ? best : null;
@@ -637,6 +652,21 @@ export class Fighter implements Foe, HellBody {
         moveX = r.x;
         moveZ = r.z;
         faceYaw = Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z);
+      } else if (this.escort) {
+        // Trot after the leader, each imp to its own spot in a ring around them.
+        const lead = this.escort();
+        if (lead.distanceTo(this.pos) > 40) {
+          this.pos.set(lead.x, groundAt(lead.x, lead.z, 0.3), lead.z);
+        }
+        const a = this.escortSlot * 1.26 + 2.2;
+        const dx = lead.x + Math.sin(a) * 2.6 - this.pos.x;
+        const dz = lead.z + Math.cos(a) * 2.6 - this.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 1.2) {
+          const run = d > 6 ? 1.3 : 0.9;
+          moveX = (dx / d) * speed * run;
+          moveZ = (dz / d) * speed * run;
+        }
       } else {
         // Nobody in sight: march on the goal (attack waves), or head home.
         const to = this.goal ?? this.home;

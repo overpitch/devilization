@@ -25,6 +25,8 @@ import { Avatar } from './avatar';
 import { PlayerTwoHud } from './hud2';
 import { viewport } from './viewport';
 import { Minimap, type MapDot } from './minimap';
+import { drawWorldMap } from './worldMap';
+import { buildStands, STANDS, type StandId, type StandSpot } from './stands';
 import { randomDemonName, randomDogName } from './hud';
 import { Spikes } from './powers';
 import { Pickups } from './pickups';
@@ -106,6 +108,14 @@ const music = new Music();
 /** Seconds the battle music holds on after the last angel stops hunting you. */
 let battleHold = 0;
 let armoryTab: ArmoryTab = 'weapons';
+/** The trading stand being browsed (null: the armory from the pause menu), and who is shopping. */
+let armoryStand: StandId | null = null;
+let shopper: Player = player;
+/** The stalls in this plane's lair. */
+let stands: StandSpot[] = [];
+/** Imps hired at the Imp Pens (saved), and the ones following you on this plane. */
+let hiredImps = 0;
+let impFollowers: Fighter[] = [];
 
 player.ballAt = () => viewModel.ballWorld;
 player.onLand = (speed) => cam.addShake(Math.min(speed / 50, 0.3));
@@ -210,8 +220,13 @@ const ctx: GameContext = {
   summon: (kind, x, z) => spawnFighter(kind, x, z, { alert: true }),
 };
 
+/** Every demon playing gets the gold: each has their own purse (as in Evil One). */
+function awardGold(amount: number) {
+  for (const p of ctx.players) p.gold += amount;
+}
+
 pickups.onCollect = (at, value) => {
-  player.gold += value;
+  awardGold(value);
   sfx.coin();
   floaters.spawn(at.clone().setY(at.y + 0.6), `+${value}`, 'gold');
 };
@@ -232,7 +247,7 @@ function spawnFighter(kind: FighterKind, x: number, z: number, opts?: SpawnOptio
 const campaignHooks: CampaignHooks = {
   spawn: spawnFighter,
   reward: (xp, gold) => {
-    player.gold += gold;
+    awardGold(gold);
     sfx.coin();
     awardXp(xp);
     // The weaponsmith and armorer get new enchanted goods after every mission.
@@ -284,6 +299,8 @@ function buildPlane(index: number) {
   planeRoot = new THREE.Group();
   scene.add(planeRoot);
   world = createWorld(scene, planeRoot);
+  stands = buildStands(planeRoot);
+  impFollowers = [];
   world.setShadows(settings.graphics !== 'low');
   geysers = new Geysers(planeRoot);
   ctx.geysers = geysers;
@@ -327,7 +344,7 @@ function awardXp(amount: number) {
   const gained = player.gainXp(amount);
   // Player 2 shares Player 1's level and XP.
   if (twoPlayer) {
-    player2.loadHero(player2.name, player.level, player.xp, 0, player.rank);
+    player2.loadHero(player2.name, player.level, player.xp, player2.gold, player.rank);
     if (gained > 0 && player2.alive) {
       player2.hp = player2.maxHp;
       player2.energy = player2.maxEnergy;
@@ -377,6 +394,8 @@ function saveGame() {
     trophies: [...earned],
     deepest,
     player2: twoPlayer ? player2Save() : savedP2,
+    potions: player.potions,
+    imps: hiredImps,
     savedAt: Date.now(),
   });
 }
@@ -398,6 +417,8 @@ function enterWorld(save: SaveData) {
   player.weapons = save.weapons.map((w) => ({ ...w }));
   player.equipped = save.equipped;
   player.armor = save.armor ? { ...save.armor } : null;
+  player.potions = save.potions;
+  hiredImps = save.imps;
   armory.restock();
   dog.name = save.dogName;
   kills = save.kills;
@@ -431,6 +452,7 @@ function spawn() {
   viewModel.reset();
   player.stopPowers(ctx);
   if (twoPlayer) placePlayer2Beside();
+  gatherImps();
   projectiles.clear();
   floaters.clear();
   floaters2.clear();
@@ -480,12 +502,13 @@ function joinPlayer2(padIndex: number) {
   // Same level and rank as Player 1. A returning Player 2 keeps their name, dog and gear;
   // a new one gets a name and a copy of Player 1's gear.
   const back = savedP2;
-  player2.loadHero(back?.name ?? randomDemonName(player.name), player.level, player.xp, 0, player.rank);
+  player2.loadHero(back?.name ?? randomDemonName(player.name), player.level, player.xp, back?.gold ?? 0, player.rank);
   player2.weapons = (back?.weapons ?? player.weapons).map((w) => ({ ...w }));
   player2.equipped = back ? back.equipped : player.equipped;
   const armor = back ? back.armor : player.armor;
   player2.armor = armor ? { ...armor } : null;
   dog2.name = back?.dogName ?? randomDogName(dog.name);
+  player2.potions = back?.potions ?? 0;
   dog2.visible = true;
   for (const a of avatars) a.visible = true;
   placePlayer2Beside();
@@ -506,6 +529,8 @@ function player2Save(): Player2Save {
     weapons: player2.weapons.map((w) => ({ ...w })),
     equipped: player2.equipped,
     armor: player2.armor ? { ...player2.armor } : null,
+    potions: player2.potions,
+    gold: player2.gold,
   };
 }
 
@@ -609,23 +634,97 @@ function lockPointer() {
   }, 1200);
 }
 
-/** Shows the armory (from the pause menu) on a tab, with a message about the last purchase. */
+/** Shows the armory (from the pause menu) or a trading stand on a tab, with a message about the last purchase. */
 function showArmory(message = '') {
+  const stand = STANDS.find((d) => d.id === armoryStand);
+  const who = twoPlayer ? ` · ${shopper.name}'s gold` : '';
   hud.showArmory({
     tab: armoryTab,
-    gold: player.gold,
+    tabs: stand ? stand.tabs : ['weapons', 'armor', 'gear'],
+    title: stand ? stand.name : 'The Armory',
+    subtitle: (stand ? stand.pitch : `Weaponsmith and armorer of ${plane().name}`) + who,
+    gold: shopper.gold,
     message,
-    rows: armory.rows(armoryTab, player, (msg) => {
-      sfx.buy();
-      saveGame();
-      showArmory(msg);
-    }),
+    side: twoPlayer && stand ? (shopper === player ? 'left' : 'right') : undefined,
+    rows: armory.rows(
+      armoryTab,
+      shopper,
+      (msg) => {
+        sfx.buy();
+        saveGame();
+        showArmory(msg);
+      },
+      { purse: shopper, imps: impFollowers.length, hireImp, power: plane().power },
+    ),
   });
 }
 
 function closeArmory() {
   hud.showArmory(null);
-  hud.showPause(true);
+  if (armoryStand) {
+    // Back to the game from a stand; back to the pause menu from the armory.
+    armoryStand = null;
+    saveGame();
+    if (shopper === player) lockPointer();
+  } else hud.showPause(true);
+}
+
+/** Two-player at a stand: the shop covers only the shopper's half, and the other player keeps playing. */
+function shopHalf() {
+  return twoPlayer && armoryStand !== null && hud.armoryOpen;
+}
+
+/** Stands in for the shopper's controller while they browse (it presses nothing). */
+const idleInput = new Input(renderer.domElement, false);
+
+/** Walks up to a trading stand's counter: its goods, for whoever is shopping. */
+function openStand(id: StandId, who: Player) {
+  who.stopPowers(ctx);
+  // Player 1 needs the mouse back to shop; Player 2 shopping leaves Player 1 playing.
+  if (who === player && document.pointerLockElement) document.exitPointerLock();
+  armoryStand = id;
+  shopper = who;
+  armoryTab = STANDS.find((d) => d.id === id)!.tabs[0];
+  showArmory();
+}
+
+/** Whoever the hired imps follow: Player 1, or Player 2 while Player 1 is down. */
+const impLeader = () => (player.alive || !twoPlayer || !player2.alive ? player.pos : player2.pos);
+
+function spawnImp(slot: number) {
+  const lead = impLeader();
+  const a = slot * 1.26 + 2.2;
+  const imp = spawnFighter('imp', lead.x + Math.sin(a) * 2.6, lead.z + Math.cos(a) * 2.6, { escort: impLeader, escortSlot: slot });
+  impFollowers.push(imp);
+  return imp;
+}
+
+/** Hires one more imp at the Imp Pens. */
+function hireImp() {
+  hiredImps++;
+  spawnImp(impFollowers.length);
+}
+
+/** After arriving (a new plane, or back at the lair): every hired imp at your side. */
+function gatherImps() {
+  impFollowers = impFollowers.filter((f) => f.alive && !f.gone);
+  const lead = impLeader();
+  impFollowers.forEach((f, i) => {
+    const a = i * 1.26 + 2.2;
+    f.pos.set(lead.x + Math.sin(a) * 2.6, f.pos.y, lead.z + Math.cos(a) * 2.6);
+  });
+  while (impFollowers.length < hiredImps) spawnImp(impFollowers.length);
+}
+
+/** A hired imp that falls is gone for good. */
+function updateImps() {
+  for (const f of impFollowers) {
+    if (!f.alive && hiredImps > 0) {
+      hiredImps--;
+      hud.toast('One of your imps has fallen');
+    }
+  }
+  impFollowers = impFollowers.filter((f) => f.alive);
 }
 
 function openRuler() {
@@ -680,6 +779,7 @@ hud.onQuit = () => {
   hud.showRuler(null);
   hud.showArmory(null);
   hud.showTrophies(null);
+  hud.showMap(null);
   if (document.pointerLockElement) document.exitPointerLock();
   hud.fadeIn();
   hud.showTitle(loadSave());
@@ -711,6 +811,9 @@ hud.onRespawn = () => {
 hud.onRulerClose = closeRuler;
 hud.onArmoryOpen = () => {
   hud.showPause(false);
+  armoryStand = null;
+  shopper = player;
+  if (armoryTab === 'potions' || armoryTab === 'imps') armoryTab = 'weapons';
   showArmory();
 };
 hud.onArmoryClose = closeArmory;
@@ -719,6 +822,46 @@ hud.onTrophiesOpen = () => {
   hud.showTrophies({ record: trophyRecord(), earned });
 };
 hud.onTrophiesClose = closeTrophies;
+hud.onMapClose = closeMap;
+
+/** The full map of this plane, north up. */
+function openMap() {
+  player.stopPowers(ctx);
+  if (twoPlayer) player2.stopPowers(ctx);
+  if (document.pointerLockElement) document.exitPointerLock();
+  const p = plane();
+  const o = campaign.objective();
+  hud.showMap({ title: p.name, subtitle: p.title, objective: o.text });
+  const marks = campaign.mapMarks();
+  // Angels near either of you (as on the mini map), and mission targets wherever they are.
+  const near = (x: number, z: number) => ctx.players.some((q) => Math.hypot(q.pos.x - x, q.pos.z - z) < 42);
+  const dots: MapDot[] = [];
+  for (const f of fighters) {
+    if (!f.alive) continue;
+    if (f.side === 'hell') {
+      if (near(f.pos.x, f.pos.z)) dots.push({ x: f.pos.x, z: f.pos.z, color: '#60d060', size: 2 });
+    } else if (f.label !== null || near(f.pos.x, f.pos.z)) {
+      dots.push({ x: f.pos.x, z: f.pos.z, color: f.state === 'alert' ? '#ff3a30' : f.suspicion > 0.3 ? '#ffc040' : '#f0ece0', size: f.label !== null ? 3.4 : 2.4 });
+    }
+  }
+  for (const d of ctx.dogs) dots.push({ x: d.pos.x, z: d.pos.z, color: '#ff8a30', size: 2.2 });
+  dots.push({ x: marks.portal.x, z: marks.portal.z, color: '#c060ff', size: 4, shape: 'ring' });
+  dots.push({ x: marks.ruler.x, z: marks.ruler.z, color: '#ff6030', size: 3.5, shape: 'square' });
+  if (marks.chest) dots.push({ x: marks.chest.x, z: marks.chest.z, color: '#ffd040', size: 3, shape: 'square' });
+  if (o.at) dots.push({ x: o.at.x, z: o.at.z, color: '#ffd040', size: 5, shape: 'diamond' });
+  const labels = [
+    { x: marks.ruler.x, z: marks.ruler.z, text: p.ruler.name },
+    { x: marks.portal.x, z: marks.portal.z, text: 'Hellgate' },
+  ];
+  const players = [{ x: player.pos.x, z: player.pos.z, yaw: cam.yaw, color: '#ffd040' }];
+  if (twoPlayer) players.push({ x: player2.pos.x, z: player2.pos.z, yaw: cam2.yaw, color: '#b080ff' });
+  drawWorldMap(document.getElementById('map-canvas') as HTMLCanvasElement, minimap.ground, players, dots, labels);
+}
+
+function closeMap() {
+  hud.showMap(null);
+  lockPointer();
+}
 function closeTrophies() {
   hud.showTrophies(null);
   hud.showPause(true);
@@ -751,6 +894,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && hud.rulerOpen) closeRuler();
   else if (e.code === 'Escape' && hud.armoryOpen) closeArmory();
   else if (e.code === 'Escape' && hud.trophiesOpen) closeTrophies();
+  else if (e.code === 'Escape' && hud.mapOpen) closeMap();
 });
 
 /** Stops play and shows the pause menu (the Menu button, or a controller player leaving the mouse). */
@@ -860,7 +1004,8 @@ function nearestInteractable(player: Player, cam: FirstPersonCamera): Interactab
   let best: Interactable | null = null;
   let bestScore = Infinity;
   cam.lookDir(lookDir);
-  for (const i of campaign.interactables(ctx, (w) => takeWeapon(w, player))) {
+  const standSpots: Interactable[] = stands.map((st) => ({ pos: st.pos, label: `Browse ${st.def.name}`, range: 2.8, kind: 'stand', stand: st.def.id, act: () => {} }));
+  for (const i of [...campaign.interactables(ctx, (w) => takeWeapon(w, player)), ...standSpots]) {
     const dx = i.pos.x - player.pos.x;
     const dz = i.pos.z - player.pos.z;
     const d = Math.hypot(dx, dz);
@@ -975,16 +1120,30 @@ function tick(realDt: number) {
   if (twoPlayer) input2.poll(realDt);
   // The Menu button opens and closes the pause menu; the menus themselves are driven by the d-pad, A and B.
   const inputs = twoPlayer ? [input, input2] : [input];
-  if (inputs.some((i) => i.pausePressed) && phase === 'playing' && !deathShown) {
+  // Two-player at a stand: the shopper's controller works their shop and nothing else.
+  const shopperInput = shopper === player ? input : input2;
+  const halfShop = shopHalf();
+  const free = halfShop ? inputs.filter((i) => i !== shopperInput) : inputs;
+  if (free.some((i) => i.pausePressed) && phase === 'playing' && !deathShown) {
     if (hud.pauseOpen) lockPointer();
     else if (!menuNav.menuOpen) pauseGame();
   }
+  // M or View opens and closes the map.
+  if (free.some((i) => i.mapPressed) && phase === 'playing' && !deathShown) {
+    if (hud.mapOpen) closeMap();
+    else if (!menuNav.menuOpen && !hud.pauseOpen) openMap();
+  }
   // A press that works a menu shouldn't also act in the game the moment the menu closes.
   const menuWasOpen = menuNav.menuOpen;
-  menuNav.update(inputs);
+  menuNav.update(halfShop ? [shopperInput] : inputs);
   // With a controller there's no mouse capture: play whenever no menu is open.
-  const padPlay = (input.mode === 'gamepad' || IS_XBOX || twoPlayer) && !menuWasOpen && !menuNav.menuOpen;
-  const playing = phase === 'playing' && (input.locked || padPlay || testMode) && !hud.rulerOpen && !hud.sideScreenOpen && !hud.endingOpen;
+  // In two-player the other player keeps playing while one shops at a stand.
+  const otherMenus = halfShop ? false : menuWasOpen || menuNav.menuOpen;
+  const padPlay = (input.mode === 'gamepad' || IS_XBOX || twoPlayer) && !otherMenus;
+  const playing = phase === 'playing' && (input.locked || padPlay || testMode) && !hud.rulerOpen && (halfShop || !hud.sideScreenOpen) && !hud.endingOpen;
+  // The shopper stands still at the counter.
+  const in1 = halfShop && shopper === player ? idleInput : input;
+  const in2 = halfShop && shopper === player2 ? idleInput : input2;
   updateXboxTip(realDt);
   foes.length = 0;
   for (const a of trainingAngels) foes.push(a);
@@ -997,18 +1156,18 @@ function tick(realDt: number) {
       saveTimer = 0;
       saveGame();
     }
-    cam.applyInput(input, realDt);
-    if (twoPlayer) cam2.applyInput(input2, realDt);
+    cam.applyInput(in1, realDt);
+    if (twoPlayer) cam2.applyInput(in2, realDt);
     let dt = realDt;
     // Hit-stop: freeze the action for a moment when a blow lands.
     if (hitStopTimer > 0) {
       hitStopTimer -= realDt;
       dt *= 0.05;
     }
-    player.update(dt, ctx, input, cam);
+    player.update(dt, ctx, in1, cam);
     dog.update(dt, ctx);
     if (twoPlayer) {
-      player2.update(dt, ctx, input2, cam2);
+      player2.update(dt, ctx, in2, cam2);
       dog2.update(dt, ctx);
       updateRevives();
     }
@@ -1024,10 +1183,10 @@ function tick(realDt: number) {
     fire.update(dt);
 
     // Use things with E; a silent kill takes over the prompt when you can make one.
-    const views = [{ p: player, c: cam, i: input, prompt: (t: string | null, a?: boolean) => hud.setPrompt(t, a) }];
-    if (twoPlayer) views.push({ p: player2, c: cam2, i: input2, prompt: (t, a) => hud2.setPrompt(t, a) });
+    const views = [{ p: player, c: cam, i: in1, prompt: (t: string | null, a?: boolean) => hud.setPrompt(t, a) }];
+    if (twoPlayer) views.push({ p: player2, c: cam2, i: in2, prompt: (t, a) => hud2.setPrompt(t, a) });
     for (const v of views) {
-      if (!v.p.alive) {
+      if (!v.p.alive || (halfShop && v.p === shopper)) {
         v.prompt(null);
         continue;
       }
@@ -1037,6 +1196,7 @@ function tick(realDt: number) {
       if (target && v.i.interactPressed) {
         if (target.kind === 'ruler') openRuler();
         else if (target.kind === 'portal') openPortal();
+        else if (target.kind === 'stand') openStand(target.stand!, v.p);
         else target.act();
         break; // a dialog may have opened
       }
@@ -1111,6 +1271,8 @@ function tick(realDt: number) {
     const o = campaign.objective();
     hud.setObjective(o.text, o.at, camera, player.pos);
     hud.setWeapons(player.weapons, player.equipped, player.armor, player.armorReduction);
+    hud.setPotions(player.potions);
+    updateImps();
     hud.setCarrying(campaign.carrying);
     if (hud.pauseOpen) {
       const can = campaign.canReturnToLair(ctx);

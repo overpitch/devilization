@@ -8,6 +8,7 @@ import { setBreathing, sfx } from './audio';
 import { clamp, smoothing, wrapAngle } from './util';
 import { breatheFire, type Breath } from './powers';
 import { MAX_LEVEL, RANKS, statsForLevel, UNLOCK, xpToNext } from './progression';
+import { POTION_HEAL } from './armory';
 
 const WALK_SPEED = 6;
 const SPRINT_SPEED = 9.5;
@@ -82,6 +83,8 @@ export class Player {
   readonly pos = new THREE.Vector3();
   /** 0 for Player 1, 1 for Player 2 in split screen. */
   slot = 0;
+  /** Hellfire Draughts carried (bought at the Brimstone Brewer). */
+  potions = 0;
   /** Multiplies damage taken (the difficulty setting). */
   damageTaken = 1;
   /** Multiplies healing between fights (the difficulty setting). */
@@ -377,6 +380,7 @@ export class Player {
     if (this.sinceHurt > (mending ? REGEN_DELAY / 2 : REGEN_DELAY) / this.regen)
       this.hp = Math.min(this.maxHp, this.hp + REGEN_RATE * (mending ? 2 : 1) * this.regen * (this.maxHp / 100) * dt);
 
+    if (input.drinkPressed) this.drink(ctx);
     this.assassinTarget = this.findAssassinTarget(ctx, cam);
     if (!this.breathing) this.updateSwing(dt, ctx, input, cam);
     this.updatePowers(dt, ctx, input, cam);
@@ -716,6 +720,27 @@ export class Player {
    * Thrown into the air by a geyser. Fire can't burn a demon, so it does no
    * damage: it's a free ride up onto high ledges.
    */
+  /** Drinks a Hellfire Draught: half your health back. */
+  drink(ctx: GameContext) {
+    if (!this.alive) return;
+    if (this.potions <= 0) {
+      sfx.denied();
+      ctx.toast('No draughts left · buy them at the Brimstone Brewer');
+      return;
+    }
+    if (this.hp >= this.maxHp) {
+      ctx.toast('Already at full health');
+      return;
+    }
+    this.potions--;
+    const heal = Math.round(this.maxHp * POTION_HEAL);
+    this.hp = Math.min(this.maxHp, this.hp + heal);
+    sfx.drink();
+    const at = this.eye(new THREE.Vector3());
+    ctx.fire.burst(at.setY(at.y - 0.6), 0x50ff80, 20, 3, { gravity: -2, life: 0.7, size: 0.1 });
+    ctx.floatText(at.setY(at.y + 0.9), `+${heal}`, 'heal');
+  }
+
   launch(speed: number, ctx: GameContext) {
     this.vel.y = speed;
     this.grounded = false;

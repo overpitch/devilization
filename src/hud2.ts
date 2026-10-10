@@ -24,7 +24,7 @@ export class PlayerTwoHud {
     this.root.innerHTML = `
       <div class="status">
         <div class="hero-row"><span class="hero-name" data-k="name"></span><span class="level-badge" data-k="level"></span></div>
-        <div class="rank-row"><span class="dog-name" data-k="dog"></span></div>
+        <div class="rank-row"><span class="dog-name" data-k="dog"></span> · <span class="gold2" data-k="gold"></span></div>
         <div class="bar health"><div class="fill" data-k="hp"></div><span data-k="hpText"></span></div>
         <div class="bar energy" data-k="energyBar"><div class="fill" data-k="energy"></div><span>Hellfire</span></div>
       </div>
@@ -70,6 +70,7 @@ export class PlayerTwoHud {
     this.set('name', p.name, (v) => (this.el.name.textContent = v));
     this.set('level', `Lv ${p.level}`, (v) => (this.el.level.textContent = v));
     this.set('dog', dogName, (v) => (this.el.dog.textContent = v));
+    this.set('gold', String(p.gold), (v) => (this.el.gold.textContent = `${v} gold`));
     const hp = Math.ceil(p.hp);
     this.set('hp', `${hp}/${p.maxHp}`, () => {
       this.el.hp.style.width = `${(p.hp / p.maxHp) * 100}%`;
@@ -78,9 +79,9 @@ export class PlayerTwoHud {
     this.set('energyBar', String(p.level >= 10), (v) => this.el.energyBar.classList.toggle('hidden', v !== 'true'));
     this.set('energy', (p.energy / p.maxEnergy).toFixed(3), (v) => (this.el.energy.style.width = `${Number(v) * 100}%`));
     const w = p.weapon;
-    this.set('weapon', `${w.id}${w.quality}${w.enchant ?? ''}|${p.size}|${p.flying}`, () => {
+    this.set('weapon', `${w.id}${w.quality}${w.enchant ?? ''}|${p.size}|${p.flying}|${p.potions}`, () => {
       const color = w.enchant ? ` style="color:#${WEAPON_ENCHANTS[w.enchant].color.toString(16).padStart(6, '0')}"` : '';
-      const extras = [p.size !== 0 ? p.sizeName : '', p.flying ? 'Flying' : ''].filter(Boolean).join(' · ');
+      const extras = [p.size !== 0 ? p.sizeName : '', p.flying ? 'Flying' : '', p.potions > 0 ? `${p.potions} draughts (D-pad down)` : ''].filter(Boolean).join(' · ');
       this.el.weapon.innerHTML = `<span${color}>${esc(weaponName(w))}</span>${extras ? ` · ${extras}` : ''}`;
     });
     this.set('sneak', String(p.sneaking), (v) => this.el.sneak.classList.toggle('hidden', v !== 'true'));

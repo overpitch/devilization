@@ -25,11 +25,13 @@ const CONTROLS: [string, string][] = [
   ['Space twice', `Take off or land (level ${UNLOCK.flight}); hold Space to climb, C to sink`],
   ['Space', 'Jump'],
   ['Shift', 'Sprint'],
+  ['H', 'Drink a Hellfire Draught (from the Brimstone Brewer)'],
+  ['M', 'Map'],
   ['Esc', 'Pause: armory, options, return to the lair'],
 ];
 
 const PAD_CONTROLS =
-  'Controller: left stick move · right stick look · RT attack · LT breathe fire · RB ground spikes · A jump (twice to fly, hold to climb) · B sneak or sink · X talk, take, open · Y switch weapon · D-pad left/right shrink/grow · LB sprint · ☰ Menu pause';
+  'Controller: left stick move · right stick look · RT attack · LT breathe fire · RB ground spikes · A jump (twice to fly, hold to climb) · B sneak or sink · X talk, take, open · Y switch weapon · D-pad left/right shrink/grow · LB sprint · D-pad down drink a draught · View map · ☰ Menu pause';
 
 /** Key labels for the keyboard and for a controller. */
 const KEYS = {
@@ -85,6 +87,7 @@ export class Hud {
   /** Pause > Add Player 2 / Remove Player 2. */
   onTogglePlayer2?: () => void;
   onTrophiesOpen?: () => void;
+  onMapClose?: () => void;
   onTrophiesClose?: () => void;
   onArmoryOpen?: () => void;
   onKeepPlaying?: () => void;
@@ -156,6 +159,7 @@ export class Hud {
     click('p2-btn', () => this.onTogglePlayer2?.());
     click('trophies-btn', () => this.onTrophiesOpen?.());
     click('trophies-close-btn', () => this.onTrophiesClose?.());
+    click('map-close-btn', () => this.onMapClose?.());
     click('armory-btn', () => this.onArmoryOpen?.());
     click('keep-playing-btn', () => this.onKeepPlaying?.());
     click('ending-title-btn', () => this.onEndingTitle?.());
@@ -291,6 +295,13 @@ export class Hud {
   }
 
   /** The pause menu's "Return to the lair" button: allowed, or why not. */
+  /** "Draughts 3/5 · H" under your weapons (hidden when you have none). */
+  setPotions(n: number) {
+    this.set('potions', `${n}|${this.padMode}`, () => {
+      $('potion-line').textContent = n > 0 ? `Hellfire Draughts: ${n} · ${this.padMode ? 'D-pad down' : 'H'} to drink` : '';
+    });
+  }
+
   /** The pause menu's split-screen button. */
   setPlayer2(joined: boolean) {
     $('p2-btn').textContent = joined ? 'Remove Player 2' : 'Add Player 2';
@@ -397,10 +408,22 @@ export class Hud {
   }
 
   /** The armory: tabs, your gold, and a row per item with its button. */
-  showArmory(view: { tab: ArmoryTab; gold: number; rows: ArmoryRow[]; message: string } | null) {
+  /** The armory (from the pause menu) or a trading stand: `tabs` are the ones it offers. */
+  showArmory(
+    view: { tab: ArmoryTab; tabs: ArmoryTab[]; title: string; subtitle: string; gold: number; rows: ArmoryRow[]; message: string; side?: 'left' | 'right' } | null,
+  ) {
     $('armory-screen').classList.toggle('hidden', !view);
+    // Two-player: a trading stand covers only the shopper's half, and the other player keeps playing.
+    $('armory-screen').classList.toggle('half-left', view?.side === 'left');
+    $('armory-screen').classList.toggle('half-right', view?.side === 'right');
     if (!view) return;
-    for (const tab of document.querySelectorAll<HTMLButtonElement>('#armory-screen .tab')) tab.classList.toggle('active', tab.dataset.tab === view.tab);
+    $('armory-title').textContent = view.title;
+    $('armory-subtitle').textContent = view.subtitle;
+    for (const tab of document.querySelectorAll<HTMLButtonElement>('#armory-screen .tab')) {
+      tab.classList.toggle('active', tab.dataset.tab === view.tab);
+      tab.classList.toggle('hidden', !view.tabs.includes(tab.dataset.tab as ArmoryTab));
+    }
+    $('armory-screen').querySelector('.tabs')!.classList.toggle('hidden', view.tabs.length < 2);
     $('armory-gold').textContent = `${view.gold} gold`;
     $('armory-message').textContent = view.message;
     const list = $('armory-rows');
@@ -494,13 +517,26 @@ export class Hud {
     }).join('');
   }
 
+  /** The full map: shows or hides it, with the plane's name and the current objective. */
+  showMap(view: { title: string; subtitle: string; objective: string } | null) {
+    $('map-screen').classList.toggle('hidden', !view);
+    if (!view) return;
+    $('map-title').textContent = view.title;
+    $('map-subtitle').textContent = view.subtitle;
+    $('map-objective').textContent = view.objective;
+  }
+
+  get mapOpen() {
+    return !$('map-screen').classList.contains('hidden');
+  }
+
   get trophiesOpen() {
     return !$('trophies-screen').classList.contains('hidden');
   }
 
   /** The armory or the trophies page: screens reached from the pause menu. */
   get sideScreenOpen() {
-    return this.armoryOpen || this.trophiesOpen;
+    return this.armoryOpen || this.trophiesOpen || this.mapOpen;
   }
 
   get armoryOpen() {
