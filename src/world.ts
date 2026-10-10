@@ -1,20 +1,22 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clamp, mulberry32 } from './util';
-import { FLAT_ZONES, LAIR, TREASURE, TREASURE_GEYSER } from './layout';
+import { LAIR, LAIR_ZONE, PORTAL } from './layout';
+import { plane, type PlaneDef } from './planes';
 
 export { SPAWN, TRAINING } from './layout';
 
 /**
- * The first plane of hell: a blocky plain cut by rivers of lava, ringed by
- * cliffs. The ground is a grid of 1 m columns (Minecraft-style), so every
- * height is a whole number of blocks.
+ * A plane of hell: a blocky landscape cut by rivers and lakes of a burning
+ * liquid (lava, blood or acid), ringed by cliffs. The ground is a grid of
+ * 1 m columns (Minecraft-style), so every height is a whole number of
+ * blocks. Which plane, and how it looks, comes from planes.ts.
  */
 
 /** The world spans -HALF..HALF on x and z. */
 export const HALF = 80;
 const N = HALF * 2;
-/** Height of the lava's surface. Lava cells' ground (the bed) is one block down, so bodies wade in it. */
+/** Height of the liquid's surface. Its bed is one block down, so bodies wade in it. */
 export const LAVA_Y = -0.55;
 const BED = -1;
 /** Height reported outside the world: an impassable wall. */
@@ -30,12 +32,13 @@ export interface Circle {
 
 /** What a block is made of; decides its colors and glow. */
 const enum Kind {
-  Ash,
-  Basalt,
-  Magma,
-  Obsidian,
-  Bone,
+  Ground,
+  Rock,
+  Vent,
+  Spire,
   Cliff,
+  /** The ruler's lair walls and the Hellgate's floor: dark obsidian on every plane. */
+  Lair,
 }
 
 const heights = new Int16Array(N * N);
@@ -43,7 +46,7 @@ const kinds = new Uint8Array(N * N);
 const lavaCells = new Uint8Array(N * N);
 /** Distance (in cells, capped) to the nearest lava; drives the glow on nearby rock. */
 const lavaDist = new Uint8Array(N * N);
-const colliders: Circle[] = [];
+let colliders: Circle[] = [];
 
 const cell = (i: number, j: number) => j * N + i;
 const inside = (i: number, j: number) => i >= 0 && j >= 0 && i < N && j < N;
@@ -132,79 +135,38 @@ const smoothstep = (e0: number, e1: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
-/** A river of lava: its center line as a function along one axis, and its width. */
-interface River {
-  /** 'x' rivers run along x (their center is a z for each x); 'z' rivers the other way. */
-  along: 'x' | 'z';
-  center: (t: number) => number;
-  width: (t: number) => number;
-  /** The stretch of the along-axis the river covers. */
-  from: number;
-  to: number;
-  /** Positions along the river where a basalt bridge crosses it. */
-  bridges: number[];
+/** Every geyser on the current plane, including the one beside the treasure pillar. */
+export function planeGeysers(): { x: number; z: number }[] {
+  return [...plane().geysers, plane().treasureGeyser];
 }
 
-const RIVERS: River[] = [
-  // The great river north of the training ground, flowing across the whole plain.
-  { along: 'x', center: (x) => 27 + 7 * Math.sin(x * 0.07) + 3 * Math.sin(x * 0.17 + 1), width: (x) => 5 + 1.5 * Math.sin(x * 0.05), from: -HALF, to: HALF, bridges: [-12, 19, 58] },
-  // Western branch.
-  { along: 'z', center: (z) => -36 + 6 * Math.sin(z * 0.08 + 1), width: (z) => 4 + Math.sin(z * 0.11), from: -HALF, to: 28, bridges: [-22, -58] },
-  // Eastern branch.
-  { along: 'z', center: (z) => 38 + 5 * Math.sin(z * 0.09), width: (z) => 4.5 + Math.sin(z * 0.07 + 2), from: -HALF, to: 28, bridges: [-8, -50] },
-];
-
-/** Round lava lakes: [x, z, radius]. */
-const LAKES: [number, number, number][] = [
-  [58, 56, 9],
-  [-60, -52, 7],
-];
-
-/** Raised mesas with stepped sides: [x, z, radius, height]. */
-const MESAS: [number, number, number, number][] = [
-  [-52, 46, 9, 5],
-  [55, -36, 10, 6],
-  [-58, -10, 6, 4],
-  [16, 54, 7, 4],
-];
-
-/** Fire geysers: vent positions. */
-export const GEYSERS: { x: number; z: number }[] = [
-  { x: 14.5, z: -42.5 },
-  TREASURE_GEYSER,
-  { x: -15.5, z: -22.5 },
-  { x: 21.5, z: 9.5 },
-  { x: -21.5, z: 11.5 },
-  { x: 54.5, z: -60.5 },
-  { x: -56.5, z: -28.5 },
-  { x: 2.5, z: 46.5 },
-  { x: -36.5, z: 56.5 },
-  { x: 62.5, z: 12.5 },
-  { x: 8.5, z: -48.5 },
-];
+/** The flattened zones: the lair's, plus the plane's own (camps, posts, battlefields). */
+function flatZones(): [number, number, number][] {
+  return [LAIR_ZONE, ...plane().flatZones];
+}
 
 /** How far inside the flattened zones a point is (0 outside, 1 well inside). */
 function flatness(x: number, z: number) {
   let f = 0;
-  for (const [fx, fz, r] of FLAT_ZONES) f = Math.max(f, smoothstep(r + 7, r, Math.hypot(x - fx, z - fz)));
+  for (const [fx, fz, r] of flatZones()) f = Math.max(f, smoothstep(r + 7, r, Math.hypot(x - fx, z - fz)));
   return f;
 }
 
 /** True within `margin` meters of a flattened zone (camps, the lair). */
 function nearFlat(x: number, z: number, margin: number) {
-  return FLAT_ZONES.some(([fx, fz, r]) => Math.hypot(x - fx, z - fz) < r + margin);
+  return flatZones().some(([fx, fz, r]) => Math.hypot(x - fx, z - fz) < r + margin);
 }
 
 function riverDistance(x: number, z: number): { d: number; half: number; bridge: boolean } {
   let best = { d: Infinity, half: 0, bridge: false };
-  for (const r of RIVERS) {
+  for (const r of plane().rivers) {
     const t = r.along === 'x' ? x : z;
     if (t < r.from - 2 || t > r.to + 2) continue;
     const across = r.along === 'x' ? z : x;
     const d = Math.abs(across - r.center(t));
     if (d < best.d) best = { d, half: r.width(t) / 2, bridge: r.bridges.some((b) => Math.abs(t - b) < 1.6) };
   }
-  for (const [lx, lz, lr] of LAKES) {
+  for (const [lx, lz, lr] of plane().lakes) {
     const d = Math.hypot(x - lx, z - lz) - lr;
     if (d < best.d - best.half) best = { d: Math.max(d, 0), half: Math.max(-d, 0.01), bridge: false };
   }
@@ -231,16 +193,25 @@ function buildLair() {
   const x1 = Math.floor(LAIR.x + LAIR.halfWidth);
   const front = Math.floor(LAIR.z + LAIR.depth / 2); // the step row
   const back = front - LAIR.depth;
-  fill(x0, back, x1, front - 1, 3, Kind.Basalt);
-  fill(x0, front, x1, front, 2, Kind.Basalt);
-  fill(x0 - 1, back - 1, x1 + 1, back - 1, 8, Kind.Obsidian);
-  fill(x0 - 1, back, x0 - 1, front - 2, 6, Kind.Obsidian);
-  fill(x1 + 1, back, x1 + 1, front - 2, 6, Kind.Obsidian);
-  for (const x of [x0, x1]) fill(x, front - 1, x, front - 1, 9, Kind.Obsidian);
+  fill(x0, back, x1, front - 1, 3, Kind.Rock);
+  fill(x0, front, x1, front, 2, Kind.Rock);
+  fill(x0 - 1, back - 1, x1 + 1, back - 1, 8, Kind.Lair);
+  fill(x0 - 1, back, x0 - 1, front - 2, 6, Kind.Lair);
+  fill(x1 + 1, back, x1 + 1, front - 2, 6, Kind.Lair);
+  for (const x of [x0, x1]) fill(x, front - 1, x, front - 1, 9, Kind.Lair);
+}
+
+/** The Hellgate's floor: a flat obsidian slab beside the lair. */
+function buildPortalFloor() {
+  const x = Math.floor(PORTAL.x);
+  const z = Math.floor(PORTAL.z);
+  fill(x - 2, z - 1, x + 2, z + 1, 1, Kind.Lair);
 }
 
 /** The treasure pillar: three blocks taller than anything around it, right beside a geyser. */
 function buildTreasurePillar() {
+  const TREASURE = plane().treasure;
+  const TREASURE_GEYSER = plane().treasureGeyser;
   const tx = Math.floor(TREASURE.x);
   const tz = Math.floor(TREASURE.z);
   const base = heights[cell(Math.floor(TREASURE_GEYSER.x) + HALF, Math.floor(TREASURE_GEYSER.z) + HALF)];
@@ -252,23 +223,76 @@ function buildTreasurePillar() {
       heights[c] = Math.min(heights[c], base + 1);
     }
   }
-  fill(tx - 1, tz - 1, tx + 1, tz + 1, base + 3, Kind.Obsidian);
+  fill(tx - 1, tz - 1, tx + 1, tz + 1, base + 3, Kind.Spire);
+}
+
+/** Distance from a point to the line segment a-b. */
+function distToSegment(x: number, z: number, a: { x: number; z: number }, b: { x: number; z: number }) {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const t = clamp(((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+  return Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t));
+}
+
+/** City blocks: tall obsidian buildings in a grid, with streets between. */
+function buildCity(rand: () => number) {
+  const city = plane().terrain.city;
+  if (!city) return;
+  const period = city.block + city.street;
+  const blockHeights = new Map<string, number>();
+  const war = plane().missions.war;
+  const TREASURE = plane().treasure;
+  for (let z = -HALF + 13; z < HALF - 13; z++) {
+    for (let x = -HALF + 13; x < HALF - 13; x++) {
+      const u = (((x + 7) % period) + period) % period;
+      const v = (((z + 7) % period) + period) % period;
+      if (u >= city.block || v >= city.block) continue; // a street
+      const key = `${Math.floor((x + 7) / period)},${Math.floor((z + 7) / period)}`;
+      let h = blockHeights.get(key);
+      if (h === undefined) {
+        // Some blocks are left empty as little squares.
+        h = rand() < 0.18 ? 0 : city.minHeight + Math.floor(rand() * (city.maxHeight - city.minHeight + 1));
+        blockHeights.set(key, h);
+      }
+      if (h === 0) continue;
+      const cx = x + 0.5;
+      const cz = z + 0.5;
+      if (nearFlat(cx, cz, 3) || Math.hypot(cx - TREASURE.x, cz - TREASURE.z) < 6) continue;
+      // Keep the attack waves' road to the battlefield open.
+      if (distToSegment(cx, cz, war.from, war.defend) < 6) continue;
+      if (planeGeysers().some((g) => Math.hypot(cx - g.x, cz - g.z) < 4)) continue;
+      const river = riverDistance(cx, cz);
+      if (river.d < river.half + 3) continue;
+      // Stepped tops: the edges of each block are a little lower.
+      const edge = Math.min(u, v, city.block - 1 - u, city.block - 1 - v);
+      const c = cell(x + HALF, z + HALF);
+      heights[c] = heights[c] + h - (edge === 0 ? 1 : 0);
+      kinds[c] = Kind.Spire;
+    }
+  }
 }
 
 function generateTerrain() {
-  const rand = mulberry32(666);
+  const p = plane();
+  const rand = mulberry32(p.seed);
+  const { base, amp, freq } = p.terrain;
+  // Each plane's hills are shifted, so no two look alike.
+  const ox = p.seed * 0.37;
+  const oz = p.seed * 0.11;
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
       const x = i - HALF + 0.5;
       const z = j - HALF + 0.5;
+      const fx = (x + ox) * freq;
+      const fz = (z + oz) * freq;
       const n =
-        1.6 * Math.sin(x * 0.061 + 0.3) * Math.cos(z * 0.053 - 1.1) +
-        1.1 * Math.sin(x * 0.13 + 2.1) * Math.sin(z * 0.117 + 0.4) +
-        0.5 * Math.sin((x - z) * 0.23);
-      let h = 1 + n;
-      let kind = Kind.Ash;
+        1.6 * Math.sin(fx * 0.061 + 0.3) * Math.cos(fz * 0.053 - 1.1) +
+        1.1 * Math.sin(fx * 0.13 + 2.1) * Math.sin(fz * 0.117 + 0.4) +
+        0.5 * Math.sin((fx - fz) * 0.23);
+      let h = base + n * amp;
+      let kind = Kind.Ground;
 
-      for (const [mx, mz, mr, mh] of MESAS) {
+      for (const [mx, mz, mr, mh] of p.mesas) {
         const d = Math.hypot(x - mx, z - mz);
         // Stepped sides: one block lower for every cell out from the rim.
         if (d < mr + mh) h = Math.max(h, mh + 1 - Math.max(0, d - mr));
@@ -290,7 +314,7 @@ function generateTerrain() {
       if (river.d < river.half) {
         if (river.bridge) {
           h = 0;
-          kind = Kind.Basalt;
+          kind = Kind.Rock;
         } else {
           isLava = true;
           h = BED;
@@ -298,7 +322,7 @@ function generateTerrain() {
       } else if (river.d < river.half + 2.5) {
         // Scorched shore, sloping down to the lava.
         h = Math.min(h, river.d < river.half + 1.2 ? 0 : 1);
-        kind = rand() < 0.18 && river.d < river.half + 1.2 ? Kind.Magma : Kind.Basalt;
+        kind = rand() < 0.18 && river.d < river.half + 1.2 ? Kind.Vent : Kind.Rock;
       }
 
       const c = cell(i, j);
@@ -308,8 +332,8 @@ function generateTerrain() {
     }
   }
 
-  // Geyser craters: a raised ring of basalt around a glowing vent.
-  for (const g of GEYSERS) {
+  // Geyser craters: a raised ring of rock around a glowing vent.
+  for (const g of planeGeysers()) {
     const gi = Math.floor(g.x) + HALF;
     const gj = Math.floor(g.z) + HALF;
     const base = heights[cell(gi, gj)];
@@ -318,10 +342,10 @@ function generateTerrain() {
         const c = cell(gi + di, gj + dj);
         if (di === 0 && dj === 0) {
           heights[c] = base;
-          kinds[c] = Kind.Magma;
+          kinds[c] = Kind.Vent;
         } else {
           heights[c] = base + 1;
-          kinds[c] = Kind.Basalt;
+          kinds[c] = Kind.Rock;
         }
       }
     }
@@ -330,13 +354,13 @@ function generateTerrain() {
   // Obsidian spires and basalt boulders scattered over the plain.
   const clearOf = (x: number, z: number, r: number) => {
     if (nearFlat(x, z, 4)) return false;
-    if (GEYSERS.some((g) => Math.hypot(x - g.x, z - g.z) < 5)) return false;
-    if (Math.hypot(x - TREASURE.x, z - TREASURE.z) < 6) return false;
+    if (planeGeysers().some((g) => Math.hypot(x - g.x, z - g.z) < 5)) return false;
+    if (Math.hypot(x - p.treasure.x, z - p.treasure.z) < 6) return false;
     const river = riverDistance(x, z);
     if (river.d < river.half + 3 + r) return false;
     return Math.max(Math.abs(x), Math.abs(z)) < HALF - 14;
   };
-  for (let n = 0; n < 45; n++) {
+  for (let n = 0; n < p.terrain.spires; n++) {
     const x = Math.floor((rand() * 2 - 1) * (HALF - 14));
     const z = Math.floor((rand() * 2 - 1) * (HALF - 14));
     const size = rand() < 0.35 ? 2 : 1;
@@ -346,22 +370,24 @@ function generateTerrain() {
       for (let b = 0; b < size; b++) {
         const c = cell(x + a + HALF, z + b + HALF);
         heights[c] += tall - (a + b) * Math.floor(rand() * 2);
-        kinds[c] = Kind.Obsidian;
+        kinds[c] = Kind.Spire;
       }
     }
   }
-  for (let n = 0; n < 70; n++) {
+  for (let n = 0; n < p.terrain.boulders; n++) {
     const x = Math.floor((rand() * 2 - 1) * (HALF - 14));
     const z = Math.floor((rand() * 2 - 1) * (HALF - 14));
     if (!clearOf(x + 0.5, z + 0.5, 2)) continue;
     for (let k = 0; k < 4; k++) {
       const c = cell(x + Math.floor(rand() * 3) + HALF, z + Math.floor(rand() * 3) + HALF);
       heights[c] += 1 + (rand() < 0.3 ? 1 : 0);
-      kinds[c] = Kind.Basalt;
+      kinds[c] = Kind.Rock;
     }
   }
 
+  buildCity(rand);
   buildLair();
+  buildPortalFloor();
   buildTreasurePillar();
 
   // How far each cell is from lava (up to 4 cells), for the glow on nearby rock.
@@ -382,15 +408,18 @@ function generateTerrain() {
 
 // ---------- Terrain mesh ----------
 
-/** Top and side colors for each kind of block. */
-const PALETTE: Record<Kind, { top: number; side: number; deep: number; glow: number }> = {
-  [Kind.Ash]: { top: 0x6b4038, side: 0x7a3022, deep: 0x5a2219, glow: 0 },
-  [Kind.Basalt]: { top: 0x3a2e2c, side: 0x2f2524, deep: 0x251d1c, glow: 0 },
-  [Kind.Magma]: { top: 0x8a2e0c, side: 0x6a220a, deep: 0x4a1a0a, glow: 0.9 },
-  [Kind.Obsidian]: { top: 0x2c2040, side: 0x241a36, deep: 0x1c142a, glow: 0 },
-  [Kind.Bone]: { top: 0xcfc4a8, side: 0xb8ad92, deep: 0x9a9078, glow: 0 },
-  [Kind.Cliff]: { top: 0x55271c, side: 0x4a2016, deep: 0x3a1a12, glow: 0 },
-};
+/** Top, side and deep colors for each kind of block on the current plane, and how much it glows. */
+function palette(p: PlaneDef): Record<Kind, { top: number; side: number; deep: number; glow: number }> {
+  const c = (list: number[], glow = 0) => ({ top: list[0], side: list[1], deep: list[2], glow });
+  return {
+    [Kind.Ground]: c(p.palette.ground),
+    [Kind.Rock]: c(p.palette.rock),
+    [Kind.Vent]: c(p.palette.vent, 0.9),
+    [Kind.Spire]: c(p.palette.spire, p.palette.spireGlow),
+    [Kind.Cliff]: c(p.palette.cliff),
+    [Kind.Lair]: c([0x2c2040, 0x241a36, 0x1c142a]),
+  };
+}
 
 /** A 16×16 speckled block texture with darker edges, drawn with hard pixels. */
 function blockTexture(rand: () => number) {
@@ -417,7 +446,7 @@ function blockTexture(rand: () => number) {
  * Lambert material that also glows by a per-vertex amount (rock lit from
  * below by nearby lava, and magma blocks).
  */
-function glowingLambert(map: THREE.Texture) {
+function glowingLambert(map: THREE.Texture, glowColor: [number, number, number]) {
   const mat = new THREE.MeshLambertMaterial({ map, vertexColors: true, flatShading: true });
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -425,12 +454,13 @@ function glowingLambert(map: THREE.Texture) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = glow;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vGlow;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vGlow * vec3(1.0, 0.22, 0.03);');
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += vGlow * vec3(${glowColor.map((v) => v.toFixed(3)).join(', ')});`);
   };
   return mat;
 }
 
 function buildTerrainMesh(rand: () => number) {
+  const PALETTE = palette(plane());
   const pos: number[] = [];
   const nor: number[] = [];
   const uv: number[] = [];
@@ -515,21 +545,21 @@ function buildTerrainMesh(rand: () => number) {
   geo.setAttribute('glow', new THREE.Float32BufferAttribute(glow, 1));
   geo.setIndex(index);
   geo.computeBoundingSphere();
-  const mesh = new THREE.Mesh(geo, glowingLambert(blockTexture(rand)));
+  const mesh = new THREE.Mesh(geo, glowingLambert(blockTexture(rand), plane().liquid.glow));
   mesh.receiveShadow = true;
   mesh.castShadow = true;
   return mesh;
 }
 
-/** Seamless, pixelated lava: dark crust over bright molten swirls. */
+/** Seamless, pixelated liquid: dark crust over bright swirls (lava, blood or acid). */
 function lavaTexture() {
   const size = 64;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const g = canvas.getContext('2d')!;
   const tau = Math.PI * 2;
-  // Bright enough that the blend seen from far away still reads as molten orange.
-  const palette = ['#7a1404', '#b82a04', '#e04a08', '#ff7010', '#ffa020', '#ffd850'];
+  // Bright enough that the blend seen from far away still reads as molten.
+  const palette = plane().liquid.colors;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const u = x / size;
@@ -583,10 +613,11 @@ function buildLavaMesh() {
 
 // ---------- Scenery ----------
 
-/** Merges boxes into one mesh: [w, h, d, x, y, z, rotY?]. */
+/** Merges boxes into one mesh: [w, h, d, x, y, z, rotY?, tiltZ?]. */
 function boxes(list: number[][], mat: THREE.Material) {
-  const geos = list.map(([w, h, d, x, y, z, ry = 0]) => {
+  const geos = list.map(([w, h, d, x, y, z, ry = 0, rz = 0]) => {
     const g = new THREE.BoxGeometry(w, h, d);
+    g.rotateZ(rz);
     g.rotateY(ry);
     g.translate(x, y, z);
     return g;
@@ -597,38 +628,69 @@ function boxes(list: number[][], mat: THREE.Material) {
   return mesh;
 }
 
-/** Charred dead trees and piles of bones. */
-function addScenery(scene: THREE.Scene, rand: () => number) {
+/** Trees (charred, bone or swamp), scattered bones, and glowing crystals. */
+function addScenery(root: THREE.Object3D, rand: () => number) {
+  const p = plane();
   const trunks: number[][] = [];
+  const moss: number[][] = [];
   const bones: number[][] = [];
+  const crystals: number[][] = [];
   const open = (x: number, z: number) => {
-    if (isLava(x, z) || nearFlat(x, z, 2) || Math.hypot(x - TREASURE.x, z - TREASURE.z) < 4) return false;
-    if (GEYSERS.some((g) => Math.hypot(x - g.x, z - g.z) < 3)) return false;
+    if (isLava(x, z) || nearFlat(x, z, 2) || Math.hypot(x - p.treasure.x, z - p.treasure.z) < 4) return false;
+    if (Math.hypot(x - PORTAL.x, z - PORTAL.z) < 5) return false;
+    if (planeGeysers().some((g) => Math.hypot(x - g.x, z - g.z) < 3)) return false;
     const h = heightAt(x, z);
     // Only on level ground.
     return [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([a, b]) => heightAt(x + a, z + b) === h) && Math.max(Math.abs(x), Math.abs(z)) < HALF - 13;
   };
 
-  for (let n = 0; n < 60; n++) {
+  const trees = p.scenery.trees;
+  for (let n = 0; trees && n < trees.count * 2; n++) {
     const x = Math.floor((rand() * 2 - 1) * HALF) + 0.5;
     const z = Math.floor((rand() * 2 - 1) * HALF) + 0.5;
     if (!open(x, z)) continue;
     const y = heightAt(x, z);
-    const tall = 2.5 + rand() * 2.5;
-    trunks.push([0.45, tall, 0.45, x, y + tall / 2, z]);
-    // A few crooked branches.
-    const branches = 2 + Math.floor(rand() * 3);
-    for (let b = 0; b < branches; b++) {
-      const a = rand() * Math.PI * 2;
-      const by = y + tall * (0.45 + rand() * 0.5);
-      const len = 0.8 + rand() * 1.1;
-      trunks.push([len, 0.22, 0.22, x + Math.cos(a) * len * 0.5, by, z - Math.sin(a) * len * 0.5, a]);
-      trunks.push([0.2, 0.6, 0.2, x + Math.cos(a) * len, by + 0.3, z - Math.sin(a) * len]);
+    if (trees.style === 'bone') {
+      // A spine of bone with ribs curving up from it.
+      const tall = 3 + rand() * 3;
+      trunks.push([0.38, tall, 0.38, x, y + tall / 2, z]);
+      const levels = 2 + Math.floor(rand() * 3);
+      for (let k = 0; k < levels; k++) {
+        const by = y + tall * (0.35 + k * 0.18);
+        const a = rand() * Math.PI;
+        for (const side of [1, -1]) {
+          const ax = Math.cos(a) * side;
+          const az = -Math.sin(a) * side;
+          trunks.push([1.1, 0.14, 0.14, x + ax * 0.5, by, z + az * 0.5, a, side * 0.55]);
+          trunks.push([0.14, 0.5, 0.14, x + ax * 1.0, by + 0.42, z + az * 1.0]);
+        }
+      }
+      trunks.push([0.5, 0.42, 0.5, x, y + tall + 0.15, z, rand() * 3]); // a skull on top
+    } else {
+      const tall = (trees.style === 'swamp' ? 2 : 2.5) + rand() * 2.5;
+      trunks.push([0.45, tall, 0.45, x, y + tall / 2, z]);
+      if (trees.style === 'swamp') {
+        // Splayed roots, and moss hanging from the branches.
+        for (let r = 0; r < 4; r++) {
+          const a = (r / 4) * Math.PI * 2 + rand();
+          trunks.push([0.9, 0.16, 0.16, x + Math.cos(a) * 0.5, y + 0.3, z - Math.sin(a) * 0.5, a, 0.6]);
+        }
+      }
+      const branches = 2 + Math.floor(rand() * 3);
+      for (let b = 0; b < branches; b++) {
+        const a = rand() * Math.PI * 2;
+        const by = y + tall * (0.45 + rand() * 0.5);
+        const len = 0.8 + rand() * 1.1;
+        trunks.push([len, 0.22, 0.22, x + Math.cos(a) * len * 0.5, by, z - Math.sin(a) * len * 0.5, a]);
+        trunks.push([0.2, 0.6, 0.2, x + Math.cos(a) * len, by + 0.3, z - Math.sin(a) * len]);
+        if (trees.style === 'swamp') moss.push([0.12, 1.0, 0.12, x + Math.cos(a) * len * 0.8, by - 0.5, z - Math.sin(a) * len * 0.8]);
+      }
     }
     addCollider({ x, z, r: 0.35 });
+    if (trunks.length > trees.count * 40) break;
   }
 
-  for (let n = 0; n < 90; n++) {
+  for (let n = 0; n < (p.scenery.bones ?? 0); n++) {
     const x = (rand() * 2 - 1) * (HALF - 14);
     const z = (rand() * 2 - 1) * (HALF - 14);
     if (!open(x, z)) continue;
@@ -640,12 +702,30 @@ function addScenery(scene: THREE.Scene, rand: () => number) {
     }
   }
 
-  scene.add(boxes(trunks, new THREE.MeshLambertMaterial({ color: 0x1c1412, flatShading: true })));
-  scene.add(boxes(bones, new THREE.MeshLambertMaterial({ color: 0xd6cbb0, flatShading: true })));
+  const cr = p.scenery.crystals;
+  for (let n = 0; cr && n < cr.count; n++) {
+    const x = (rand() * 2 - 1) * (HALF - 14);
+    const z = (rand() * 2 - 1) * (HALF - 14);
+    if (!open(x, z)) continue;
+    const y = heightAt(x, z);
+    // A cluster of leaning shards.
+    for (let k = 0; k < 3; k++) {
+      const tall = 0.6 + rand() * 1.2;
+      crystals.push([0.2, tall, 0.2, x + (rand() - 0.5) * 0.6, y + tall / 2 - 0.1, z + (rand() - 0.5) * 0.6, rand() * 3, (rand() - 0.5) * 0.6]);
+    }
+  }
+
+  if (trunks.length) root.add(boxes(trunks, new THREE.MeshLambertMaterial({ color: trees!.color, flatShading: true })));
+  if (moss.length) root.add(boxes(moss, new THREE.MeshLambertMaterial({ color: 0x5a6a20, flatShading: true })));
+  if (bones.length) root.add(boxes(bones, new THREE.MeshLambertMaterial({ color: 0xd6cbb0, flatShading: true })));
+  if (crystals.length) {
+    const c = new THREE.Color(cr!.color);
+    root.add(boxes(crystals, new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.5), flatShading: true })));
+  }
 }
 
-/** Glowing embers drifting up through the air around the player. */
-function createEmbers(count: number) {
+/** Motes drifting through the air around the player: embers rising, ash falling, spores. */
+function createEmbers(count: number, motes: PlaneDef['motes']) {
   const span = { x: 70, y: 30 };
   const positions = new Float32Array(count * 3);
   const speeds = new Float32Array(count);
@@ -659,7 +739,7 @@ function createEmbers(count: number) {
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const points = new THREE.Points(
     geo,
-    new THREE.PointsMaterial({ color: 0xff8a3a, size: 0.13, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }),
+    new THREE.PointsMaterial({ color: motes.color, size: motes.size, transparent: true, opacity: 0.9, blending: motes.rise > 0 ? THREE.AdditiveBlending : THREE.NormalBlending, depthWrite: false }),
   );
   points.frustumCulled = false;
   let time = 0;
@@ -667,7 +747,7 @@ function createEmbers(count: number) {
     time += dt;
     for (let i = 0; i < count; i++) {
       let x = positions[i * 3];
-      let y = positions[i * 3 + 1] + speeds[i] * dt;
+      let y = positions[i * 3 + 1] + speeds[i] * motes.rise * dt;
       let z = positions[i * 3 + 2];
       x += Math.sin(time * 0.7 + i) * 0.3 * dt;
       // Keep every ember within a box around the player, wrapping at the edges.
@@ -685,18 +765,18 @@ function createEmbers(count: number) {
   return { points, update };
 }
 
-/** A vertical gradient for the sky: black-red overhead, fiery at the horizon. */
-function skyTexture(horizon: THREE.Color) {
+/** A vertical gradient for the sky: dark overhead, glowing at the horizon. */
+function skyTexture(sky: PlaneDef['sky'], horizon: THREE.Color) {
   const canvas = document.createElement('canvas');
   canvas.width = 2;
   canvas.height = 256;
   const g = canvas.getContext('2d')!;
   const grad = g.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, '#070103');
-  grad.addColorStop(0.3, '#1e0606');
-  grad.addColorStop(0.47, '#6a200c');
+  grad.addColorStop(0, sky.top);
+  grad.addColorStop(0.3, sky.upper);
+  grad.addColorStop(0.47, sky.near);
   grad.addColorStop(0.5, `#${horizon.getHexString()}`);
-  grad.addColorStop(1, '#1a0604');
+  grad.addColorStop(1, sky.bottom);
   g.fillStyle = grad;
   g.fillRect(0, 0, 2, 256);
   const tex = new THREE.CanvasTexture(canvas);
@@ -707,42 +787,59 @@ function skyTexture(horizon: THREE.Color) {
 
 export type World = ReturnType<typeof createWorld>;
 
-export function createWorld(scene: THREE.Scene) {
-  const rand = mulberry32(1666);
+/**
+ * Builds the current plane (see setPlane in planes.ts): its ground, liquid,
+ * scenery, lights and sky. Everything goes under `root`, so leaving the
+ * plane is just removing root.
+ */
+export function createWorld(scene: THREE.Scene, root: THREE.Object3D) {
+  const p = plane();
+  const rand = mulberry32(p.seed + 1000);
+  colliders = [];
   generateTerrain();
 
-  const horizon = new THREE.Color(0x4a1408);
-  scene.background = skyTexture(horizon);
-  scene.fog = new THREE.Fog(horizon, 30, 115);
+  const horizon = new THREE.Color(p.sky.horizon);
+  scene.background = skyTexture(p.sky, horizon);
+  scene.fog = new THREE.Fog(horizon, p.fog[0], p.fog[1]);
 
-  const hemi = new THREE.HemisphereLight(0xc06048, 0x401008, 2.2);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffb090, 1.6);
+  const hemi = new THREE.HemisphereLight(p.hemi[0], p.hemi[1], p.hemi[2]);
+  root.add(hemi);
+  const sun = new THREE.DirectionalLight(p.sun[0], p.sun[1]);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 160 });
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.04;
-  scene.add(sun, sun.target);
+  root.add(sun, sun.target);
   const sunOffset = new THREE.Vector3(-30, 60, 20);
 
-  scene.add(buildTerrainMesh(rand));
+  const terrain = buildTerrainMesh(rand);
+  root.add(terrain);
   const lava = buildLavaMesh();
-  scene.add(lava.mesh);
-  addScenery(scene, rand);
-  const embers = createEmbers(500);
-  scene.add(embers.points);
+  root.add(lava.mesh);
+  addScenery(root, rand);
+  const embers = createEmbers(500, p.motes);
+  root.add(embers.points);
 
   let time = 0;
   return {
     setShadows(on: boolean) {
       sun.castShadow = on;
     },
+    /** Frees the big meshes' memory when leaving the plane. */
+    dispose() {
+      for (const m of [terrain, lava.mesh]) {
+        m.geometry.dispose();
+        (m.material as THREE.Material).dispose();
+      }
+      lava.tex.dispose();
+      sun.shadow.map?.dispose();
+    },
     update(dt: number, center: THREE.Vector3) {
       time += dt;
       // The lava creeps along and its glow pulses slowly.
       lava.tex.offset.set(time * 0.035, time * 0.02);
-      const pulse = 0.92 + Math.sin(time * 1.3) * 0.06 + Math.sin(time * 3.1) * 0.03;
+      const pulse = p.liquid.brightness + Math.sin(time * 1.3) * 0.06 + Math.sin(time * 3.1) * 0.03;
       lava.mat.color.setScalar(pulse);
       embers.update(dt, center);
       // Keep the shadow area centered on the player.

@@ -3,25 +3,41 @@ import { createHumanoid, setFlash, type Humanoid } from './character';
 import { Fighter, type FighterKind, type SpawnOptions } from './fighter';
 import { buildWeaponMesh, randomWeaponEnchant, WEAPON_ENCHANTS, weaponName, weaponPower, type Quality, type Weapon, type WeaponId } from './weapons';
 import { addCollider, findOpenSpot, groundAt, heightAt } from './world';
-import { CROWN_CAMP, LAIR, PATROLS, SPAWN, THRONE, TRAITOR_POST, TREASURE, WEST_BRIDGE } from './layout';
+import { LAIR, PORTAL, SPAWN, THRONE } from './layout';
+import { ALL_PLANE_NAMES, BUILT_PLANES, PLANES, plane, type PlaneDef } from './planes';
 import { sfx } from './audio';
 import { RANKS } from './progression';
 import type { GameContext } from './types';
 
 /**
- * The First Plane's story: Malphas and his missions, the angels' camps,
- * the treasure chest, ambient patrols, and weapons lying on the ground.
+ * A plane's story: its ruler and missions, the angels' camp and watchpost,
+ * the treasure chest, the Hellgate, ambient patrols, and weapons lying on
+ * the ground. A new Campaign is built for each plane you visit; what you've
+ * achieved everywhere lives in Progress.
  */
 
 export type MissionKind = 'war' | 'retrieve' | 'assassinate';
+
+/** What you've done across all the planes (saved). */
+export interface Progress {
+  /** Main missions finished, as "plane:mission" (e.g. "1:crown"). */
+  done: Set<string>;
+  /** Planes whose treasure chest you've opened. */
+  chests: Set<number>;
+  /** Planes whose ruler you've met. */
+  talked: Set<number>;
+  sideDone: number;
+}
 
 export interface Offer {
   id: string;
   title: string;
   kind: MissionKind;
   main: boolean;
-  /** What Malphas says about it. */
+  /** What the ruler says about it. */
   brief: string;
+  /** What the ruler says when you report back. */
+  praise?: string;
   reward: { xp: number; gold: number };
   /** Where a side mission takes place. */
   spot?: { x: number; z: number };
@@ -54,13 +70,17 @@ export interface Interactable {
   label: string;
   /** How close you must be. */
   range: number;
+  /** The ruler and the Hellgate open dialogs (through main). */
+  kind?: 'ruler' | 'portal';
   act(): void;
 }
 
-/** What the ruler's dialog shows. */
+/** What a dialog shows: the ruler's words and missions, or the Hellgate's planes. */
 export interface Dialog {
+  name: string;
+  title: string;
   speech: string;
-  cards: { title: string; kind: MissionKind; main: boolean; text: string; reward: string; button: string; act: () => void }[];
+  cards: { title: string; tag: string; main: boolean; text: string; reward: string; button: string; disabled?: boolean; act: () => void }[];
 }
 
 export interface CampaignHooks {
@@ -72,39 +92,16 @@ export interface CampaignHooks {
   dropGold(at: THREE.Vector3, coins: number, valueEach: number): void;
   /** Called when the dialog's contents change while it's open. */
   refreshDialog(): void;
+  /** Go to another plane (1-based). */
+  travel(index: number): void;
   save(): void;
 }
 
-const MAIN: Offer[] = [
-  {
-    id: 'bridge',
-    title: 'Blood at the Bridge',
-    kind: 'war',
-    main: true,
-    brief: 'Heaven means to cross the great river by the western bridge. Take my imps and hold it. Not one feathered foot sets down on my side.',
-    reward: { xp: 150, gold: 120 },
-  },
-  {
-    id: 'crown',
-    title: 'The Stolen Crown',
-    kind: 'retrieve',
-    main: true,
-    brief: 'Angels crept into my vault and stole the Brimstone Crown. Their camp lies across the eastern river. Bring it back to me.',
-    reward: { xp: 150, gold: 120 },
-  },
-  {
-    id: 'traitor',
-    title: 'The Traitor of the Pits',
-    kind: 'assassinate',
-    main: true,
-    brief: 'Vargash, one of my own captains, sold himself to heaven for a halo. He hides in their watchpost on the northwest mesa. Kill him. Do it unseen and I will pay double.',
-    reward: { xp: 150, gold: 120 },
-  },
-];
+const KIND_TAG: Record<MissionKind, string> = { war: 'War front', retrieve: 'Retrieval', assassinate: 'Assassination' };
 
-const CAPTAIN_NAMES = ['Auriel', 'Seraphon', 'Cassiel', 'Zadkiel', 'Haniel', 'Barachiel', 'Jophiel', 'Raziel'];
+const CAPTAIN_NAMES = ['Auriel', 'Seraphon', 'Cassiel', 'Zadkiel', 'Haniel', 'Barachiel', 'Jophiel', 'Raziel', 'Phanuel', 'Sachiel'];
 const SIDE_TEMPLATES = {
-  patrol: { kind: 'war' as const, title: 'Cull the Patrol', brief: 'An angel patrol is sniffing around my plain. Hunt them down, every one.' },
+  patrol: { kind: 'war' as const, title: 'Cull the Patrol', brief: 'An angel patrol is sniffing around my lands. Hunt them down, every one.' },
   captain: { kind: 'assassinate' as const, title: 'Silence the Captain', brief: 'An angel captain is scouting my lands. Kill the captain. Unseen pays double.' },
   gem: { kind: 'retrieve' as const, title: 'Recover the Soul Gem', brief: 'One of my soul gems was taken by angels. Bring it back before they carry it off to heaven.' },
 };
@@ -122,33 +119,35 @@ function part(g: THREE.Object3D, m: THREE.Material, w: number, h: number, d: num
   return mesh;
 }
 
-/** Malphas: a huge horned demon seated on an obsidian throne. */
+/** The plane's ruler: a huge horned demon seated on an obsidian throne. */
 class Ruler {
   readonly pos: THREE.Vector3;
   readonly h: Humanoid;
   private time = 0;
   private talking = 0;
+  private readonly glow: THREE.Color;
 
-  constructor(scene: THREE.Scene) {
+  constructor(root: THREE.Object3D, p: PlaneDef) {
+    const r = p.ruler;
     const y = heightAt(THRONE.x, THRONE.z);
     this.pos = new THREE.Vector3(THRONE.x, y, THRONE.z);
     const throne = new THREE.Group();
     throne.position.copy(this.pos);
     const obsidian = lambert(0x221830);
-    const magma = lambert(0x8a2e0c, 0x9a2a04);
+    const seam = lambert(r.eyes, new THREE.Color(r.eyes).multiplyScalar(0.6).getHex());
     const bone = lambert(0xd6cbb0);
     part(throne, obsidian, 2.4, 1.0, 1.8, 0, 0.5, -0.2); // seat
     part(throne, obsidian, 2.6, 4.2, 0.5, 0, 2.1, -1.0); // back
-    part(throne, magma, 0.12, 3.6, 0.1, 0, 2.2, -0.74); // glowing seam up the back
+    part(throne, seam, 0.12, 3.6, 0.1, 0, 2.2, -0.74); // glowing seam up the back
     for (const s of [1, -1]) {
       part(throne, obsidian, 0.4, 1.6, 1.8, 1.25 * s, 0.8, -0.2); // armrests
       part(throne, obsidian, 0.3, 1.2, 0.3, 1.2 * s, 4.6, -1.0); // spikes on top
       part(throne, bone, 0.32, 0.3, 0.34, 1.25 * s, 1.75, 0.55); // skulls on the armrests
     }
-    scene.add(throne);
+    root.add(throne);
     addCollider({ x: THRONE.x, z: THRONE.z - 0.3, r: 1.3 });
 
-    this.h = createHumanoid({ skin: 0xa02418, shirt: 0x1c0c0c, pants: 0x1c0c0c, boots: 0x0c0606, eyes: 0xffc020, glowingEyes: true, belt: 0xd9b24a, armor: 0x2a1a14 });
+    this.h = createHumanoid({ skin: r.skin, shirt: r.robe, pants: r.robe, boots: 0x0c0606, eyes: r.eyes, glowingEyes: true, belt: 0xd9b24a, armor: 0x2a1a14 });
     this.h.root.scale.setScalar(1.9);
     this.h.root.position.set(THRONE.x, y + 0.2, THRONE.z + 0.15);
     // Seated: thighs forward, shins down.
@@ -157,7 +156,7 @@ class Ruler {
     this.h.armL.rotation.set(-0.5, 0, 0.25);
     this.h.armR.rotation.set(-0.5, 0, -0.25);
     // Great curling horns and a crown of gold spikes.
-    const horn = lambert(0x1a1210);
+    const horn = lambert(r.horns);
     for (const s of [1, -1]) {
       const g = new THREE.Group();
       g.position.set(0.17 * s, 0.38, 0);
@@ -172,7 +171,8 @@ class Ruler {
     cape.scale.set(0.7, 1.0, 0.05);
     cape.position.set(0, 0.1, -0.2);
     this.h.torso.add(cape);
-    scene.add(this.h.root);
+    root.add(this.h.root);
+    this.glow = new THREE.Color(r.eyes);
   }
 
   /** Speaks: sound, and a moment of glowing eyes. */
@@ -192,7 +192,7 @@ class Ruler {
     this.h.head.rotation.y += (look - this.h.head.rotation.y) * Math.min(1, dt * 3);
     this.h.torso.rotation.x = Math.sin(this.time * 0.8) * 0.02;
     this.h.armR.rotation.x = -0.5 - (this.talking > 0 ? Math.sin(this.talking * 6) * 0.3 + 0.3 : 0);
-    setFlash(this.h, new THREE.Color(0xff3010), this.talking > 0 ? 0.3 : 0.12);
+    setFlash(this.h, this.glow, this.talking > 0 ? 0.25 : 0.08);
   }
 }
 
@@ -207,46 +207,60 @@ interface Drop {
 const QUALITY_GLOW = [0x9a9a9a, 0xfff2c0, 0x6ad0ff];
 
 export class Campaign {
-  /** Main missions finished. */
-  readonly done = new Set<string>();
-  sideDone = 0;
-  chestOpened = false;
-  /** Has met Malphas. */
-  talked = false;
   active: Running | null = null;
+  readonly plane: PlaneDef;
   private offers: Offer[] = [];
   private readonly ruler: Ruler;
   private readonly drops: Drop[] = [];
   private readonly chest: THREE.Group;
   private readonly chestLid: THREE.Group;
   private chestOpenT = 0;
+  private readonly portalGlow: THREE.Mesh;
   private readonly ambient: { at: { x: number; z: number }; fighters: Fighter[]; respawn: number }[] = [];
   private time = 0;
+  private playerPos = new THREE.Vector3();
 
   constructor(
-    private readonly scene: THREE.Scene,
+    private readonly root: THREE.Object3D,
+    private readonly progress: Progress,
     private readonly hooks: CampaignHooks,
   ) {
-    this.ruler = new Ruler(scene);
+    this.plane = plane();
+    this.ruler = new Ruler(root, this.plane);
     this.buildCamp();
     this.buildWatchpost();
     this.buildBraziers();
+    this.portalGlow = this.buildPortal();
     const ch = this.buildChest();
     this.chest = ch.group;
     this.chestLid = ch.lid;
-    this.ambient = PATROLS.map((at) => ({ at, fighters: [], respawn: 0 }));
+    this.chestOpenT = this.chestOpened ? 1 : 0;
+    // Three angel patrols roam the plane between missions.
+    for (let i = 0; i < 3; i++) {
+      const at = findOpenSpot(SPAWN.x, SPAWN.z, 35);
+      if (at) this.ambient.push({ at, fighters: [], respawn: 0 });
+    }
+  }
+
+  private get chestOpened() {
+    return this.progress.chests.has(this.plane.index);
+  }
+
+  private get rulerName() {
+    return this.plane.ruler.name;
   }
 
   // ---------- Scenery ----------
 
-  /** The angels' camp: white tents, a holy banner, and the altar where the crown sits. */
+  /** The angels' camp: white tents, a holy banner, and the altar where the stolen treasure sits. */
   private buildCamp() {
+    const c = this.plane.missions.retrieve.camp;
     const g = new THREE.Group();
     const cloth = lambert(0xf2eee2);
     const gold = lambert(0xd9b24a);
     for (const [x, z, r] of [[-4, 3, 0.3], [4, 4, -0.4], [0, -5, 0]]) {
       const tent = new THREE.Group();
-      tent.position.set(CROWN_CAMP.x + x, heightAt(CROWN_CAMP.x + x, CROWN_CAMP.z + z), CROWN_CAMP.z + z);
+      tent.position.set(c.x + x, heightAt(c.x + x, c.z + z), c.z + z);
       tent.rotation.y = r;
       // A pitched roof of two slabs over a box.
       part(tent, cloth, 2.4, 1.2, 2.6, 0, 0.6, 0);
@@ -254,32 +268,33 @@ export class Campaign {
       part(tent, cloth, 1.7, 0.12, 2.8, -0.62, 1.55, 0).rotation.z = 0.75;
       part(tent, gold, 0.1, 0.1, 2.9, 0, 2.15, 0);
       g.add(tent);
-      addCollider({ x: CROWN_CAMP.x + x, z: CROWN_CAMP.z + z, r: 1.4 });
+      addCollider({ x: c.x + x, z: c.z + z, r: 1.4 });
     }
     // Banner of heaven: white and gold on a tall pole.
-    const y = heightAt(CROWN_CAMP.x, CROWN_CAMP.z);
-    part(g, gold, 0.12, 5, 0.12, CROWN_CAMP.x + 2, y + 2.5, CROWN_CAMP.z);
-    part(g, cloth, 0.05, 1.6, 1.1, CROWN_CAMP.x + 2, y + 4, CROWN_CAMP.z + 0.6);
-    part(g, gold, 0.06, 0.6, 0.12, CROWN_CAMP.x + 2, y + 4.1, CROWN_CAMP.z + 0.6);
+    const y = heightAt(c.x, c.z);
+    part(g, gold, 0.12, 5, 0.12, c.x + 2, y + 2.5, c.z);
+    part(g, cloth, 0.05, 1.6, 1.1, c.x + 2, y + 4, c.z + 0.6);
+    part(g, gold, 0.06, 0.6, 0.12, c.x + 2, y + 4.1, c.z + 0.6);
     // The altar.
-    part(g, cloth, 1.2, 0.9, 0.8, CROWN_CAMP.x, y + 0.45, CROWN_CAMP.z);
-    part(g, gold, 1.3, 0.1, 0.9, CROWN_CAMP.x, y + 0.95, CROWN_CAMP.z);
-    this.scene.add(g);
+    part(g, cloth, 1.2, 0.9, 0.8, c.x, y + 0.45, c.z);
+    part(g, gold, 1.3, 0.1, 0.9, c.x, y + 0.95, c.z);
+    this.root.add(g);
   }
 
-  /** The angels' white stone watchpost on the northwest mesa. */
+  /** The angels' white stone watchpost, where the assassination target waits. */
   private buildWatchpost() {
+    const post = this.plane.missions.assassinate.post;
     const g = new THREE.Group();
     const stone = lambert(0xe8e4da);
     const gold = lambert(0xd9b24a);
-    const x = TRAITOR_POST.x - 4;
-    const z = TRAITOR_POST.z + 3;
+    const x = post.x - 4;
+    const z = post.z + 3;
     const y = heightAt(x, z);
     part(g, stone, 2.4, 5, 2.4, x, y + 2.5, z);
     for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) part(g, stone, 0.5, 0.6, 0.5, x + dx * 1.1, y + 5.3, z + dz * 1.1);
     part(g, gold, 0.1, 2.2, 0.1, x, y + 6.1, z);
     part(g, lambert(0xf2eee2), 0.05, 0.9, 1.1, x, y + 6.6, z + 0.6);
-    this.scene.add(g);
+    this.root.add(g);
     addCollider({ x, z, r: 1.6 });
   }
 
@@ -294,13 +309,37 @@ export class Campaign {
       part(g, iron, 0.25, 1.1, 0.25, 0, 0.55, 0);
       part(g, iron, 0.8, 0.25, 0.8, 0, 1.2, 0);
       part(g, lambert(0xff6a10, 0xff4a00), 0.6, 0.15, 0.6, 0, 1.36, 0);
-      this.scene.add(g);
+      this.root.add(g);
     }
   }
 
+  /** The Hellgate: two obsidian pillars and a lintel around a sheet of swirling fire. */
+  private buildPortal() {
+    const g = new THREE.Group();
+    g.position.set(PORTAL.x, heightAt(PORTAL.x, PORTAL.z), PORTAL.z);
+    const obsidian = lambert(0x221830);
+    const trim = lambert(0xff4a10, 0xc02a00);
+    for (const s of [1, -1]) {
+      part(g, obsidian, 0.8, 4.6, 0.8, 0, 2.3, 1.7 * s);
+      part(g, trim, 0.82, 0.12, 0.82, 0, 1.2, 1.7 * s);
+      part(g, trim, 0.82, 0.12, 0.82, 0, 3.4, 1.7 * s);
+      addCollider({ x: PORTAL.x, z: PORTAL.z + 1.7 * s, r: 0.55 });
+    }
+    part(g, obsidian, 1.0, 0.8, 4.6, 0, 4.9, 0);
+    // Horns on the lintel.
+    for (const s of [1, -1]) part(g, lambert(0xd6cbb0), 0.2, 0.9, 0.2, 0, 5.6, 2.1 * s).rotation.x = 0.5 * s;
+    const glow = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0xff5010, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glow.scale.set(0.12, 4.2, 2.6);
+    glow.position.y = 2.2;
+    g.add(glow);
+    this.root.add(g);
+    return glow;
+  }
+
   private buildChest() {
+    const t = this.plane.treasure;
     const group = new THREE.Group();
-    group.position.set(TREASURE.x, heightAt(TREASURE.x, TREASURE.z), TREASURE.z);
+    group.position.set(t.x, heightAt(t.x, t.z), t.z);
     group.rotation.y = 0.3;
     const wood = lambert(0x4a2414);
     const gold = lambert(0xe0b030, 0x3a2400);
@@ -313,26 +352,27 @@ export class Campaign {
     part(lid, wood, 1.0, 0.25, 0.65, 0, 0.12, 0.32);
     part(lid, gold, 0.16, 0.16, 0.06, 0, 0.05, 0.66);
     group.add(lid);
-    this.scene.add(group);
+    this.root.add(group);
     return { group, lid };
   }
 
-  // ---------- Saving ----------
+  // ---------- Missions ----------
 
-  load(done: string[], sideDone: number, chestOpened: boolean, talked: boolean) {
-    this.cancel();
-    this.done.clear();
-    for (const d of done) this.done.add(d);
-    this.sideDone = sideDone;
-    this.chestOpened = chestOpened;
-    this.chestOpenT = chestOpened ? 1 : 0;
-    this.talked = talked;
-    this.offers = [];
-    for (const d of this.drops) this.scene.remove(d.group);
-    this.drops.length = 0;
+  /** This plane's three main missions, with rewards that grow deeper down. */
+  private mainOffers(): Offer[] {
+    const p = this.plane;
+    const m = p.missions;
+    const reward = { xp: Math.round(150 * p.power), gold: Math.round(120 * p.power) };
+    return [
+      { id: `${p.index}:${m.war.id}`, title: m.war.title, kind: 'war', main: true, brief: m.war.brief, praise: m.war.praise, reward },
+      { id: `${p.index}:${m.retrieve.id}`, title: m.retrieve.title, kind: 'retrieve', main: true, brief: m.retrieve.brief, praise: m.retrieve.praise, reward },
+      { id: `${p.index}:${m.assassinate.id}`, title: m.assassinate.title, kind: 'assassinate', main: true, brief: m.assassinate.brief, praise: m.assassinate.praise, reward },
+    ];
   }
 
-  // ---------- Missions ----------
+  private get allMainDone() {
+    return this.mainOffers().every((o) => this.progress.done.has(o.id));
+  }
 
   private sideOffers(level: number): Offer[] {
     if (this.offers.length === 0) {
@@ -347,7 +387,7 @@ export class Campaign {
           kind: t.kind,
           main: false,
           brief: t.brief,
-          reward: { xp: 40 + 8 * level, gold: 25 + 5 * level },
+          reward: { xp: Math.round((40 + 8 * level) * Math.sqrt(this.plane.power)), gold: 25 + 5 * level },
           spot,
           template,
         });
@@ -356,24 +396,27 @@ export class Campaign {
     return this.offers;
   }
 
-  /** What Malphas says and offers right now. Claims a finished mission's reward first. */
+  /** What the ruler says and offers right now. Claims a finished mission's reward first. */
   dialog(level: number, rank: number): Dialog {
     this.ruler.speak();
+    const r = this.plane.ruler;
+    const head = { name: r.name, title: r.title };
     let speech: string;
-    const firstTime = !this.talked;
-    this.talked = true;
+    const firstTime = !this.progress.talked.has(this.plane.index);
+    this.progress.talked.add(this.plane.index);
     const a = this.active;
     if (a && a.phase === 'return') {
       speech = this.claim(a, rank);
     } else if (a) {
       return {
+        ...head,
         speech: 'Why are you still here? Go and finish what I asked of you.',
         cards: [
           {
             title: a.offer.title,
-            kind: a.offer.kind,
+            tag: KIND_TAG[a.offer.kind] + (a.offer.main ? '' : ' · side'),
             main: a.offer.main,
-            text: this.objective(level).text,
+            text: this.objective().text,
             reward: rewardText(a.offer),
             button: 'Abandon',
             act: () => {
@@ -385,44 +428,44 @@ export class Campaign {
         ],
       };
     } else if (firstTime) {
-      speech = `So the pits coughed up another Imp. I am Malphas, ruler of the First Plane. Heaven's armies are on my plain, and I need claws. Serve me well and I will raise you up. Fail me and you go back in the pit.`;
+      speech = r.greeting;
     } else {
-      speech = this.done.size === MAIN.length ? 'More work, Fiend? Heaven never runs out of angels to kill.' : 'Back for more work? Good.';
+      speech = this.allMainDone ? r.allDone : r.again;
     }
     const cards: Dialog['cards'] = [];
-    for (const m of MAIN) {
-      if (this.done.has(m.id)) continue;
-      cards.push({ title: m.title, kind: m.kind, main: true, text: m.brief, reward: rewardText(m), button: 'Accept', act: () => this.accept(m) });
+    for (const m of this.mainOffers()) {
+      if (this.progress.done.has(m.id)) continue;
+      cards.push({ title: m.title, tag: KIND_TAG[m.kind], main: true, text: m.brief, reward: rewardText(m), button: 'Accept', act: () => this.accept(m) });
     }
     for (const o of this.sideOffers(level)) {
-      cards.push({ title: o.title, kind: o.kind, main: false, text: o.brief, reward: rewardText(o), button: 'Accept', act: () => this.accept(o) });
+      cards.push({ title: o.title, tag: `${KIND_TAG[o.kind]} · side`, main: false, text: o.brief, reward: rewardText(o), button: 'Accept', act: () => this.accept(o) });
     }
-    if (!this.chestOpened && this.done.size >= 1) speech += ' And they say the old lords left a chest of gold atop a pillar no imp can climb. Fire carries the bold.';
-    return { speech, cards };
+    if (!this.chestOpened && this.mainOffers().some((o) => this.progress.done.has(o.id))) speech += ` ${r.chestHint}`;
+    return { ...head, speech, cards };
   }
 
-  /** Hands over the reward for a finished mission. Returns Malphas's words. */
+  /** Hands over the reward for a finished mission. Returns the ruler's words. */
   private claim(a: Running, rank: number): string {
     const o = a.offer;
     let gold = o.reward.gold;
-    let words = 'Well done. Here is your reward.';
+    let words = o.praise ?? 'Well done. Here is your reward.';
     if (o.kind === 'assassinate' && a.unseen) {
       gold *= 2;
       words = 'Not one of them saw you coming. Double pay, as promised.';
-    } else if (o.id === 'crown') words = 'My crown! The angels will regret ever touching it.';
-    else if (o.id === 'bridge') words = 'The bridge held. Heaven will think twice before it tries that again.';
-    else if (o.id === 'traitor') words = "Vargash's halo makes a fine trophy. Here is your pay.";
+    }
     this.hooks.reward(o.reward.xp, gold);
     this.hooks.announce('Mission complete', `${o.title} · +${o.reward.xp} XP · +${gold} gold`);
     this.end();
-    if (o.main) this.done.add(o.id);
+    if (o.main) this.progress.done.add(o.id);
     else {
-      this.sideDone++;
+      this.progress.sideDone++;
       this.offers = [];
     }
-    if (o.main && this.done.size === MAIN.length && rank === 0) {
-      words += ` You have done everything I asked. Kneel, Imp... and rise a ${RANKS[1]}. The way down to the Second Plane will open for you soon.`;
-      setTimeout(() => this.hooks.promoted(1), 2500);
+    // Finishing a plane's main missions earns the next rank, which opens the next plane.
+    const next = this.plane.index;
+    if (o.main && this.allMainDone && rank === next - 1) {
+      words += ` ${this.plane.ruler.promotion}`;
+      setTimeout(() => this.hooks.promoted(next), 2500);
     }
     this.hooks.save();
     return words;
@@ -444,24 +487,28 @@ export class Campaign {
         const a = phase + (i / n) * Math.PI * 2;
         return new THREE.Vector3(cx + Math.sin(a) * r, 0, cz + Math.cos(a) * r);
       });
+    const m = this.plane.missions;
 
-    if (o.id === 'crown') {
-      const c = CROWN_CAMP;
+    if (o.main && o.kind === 'retrieve') {
+      const c = m.retrieve.camp;
       spawn('footsoldier', c.x - 6, c.z, { patrol: ring(c.x, c.z, 7, 4) });
       spawn('footsoldier', c.x + 6, c.z, { patrol: ring(c.x, c.z, 7, 4, Math.PI) });
       spawn('footsoldier', c.x, c.z + 6, { facing: 0 });
       spawn('archer', c.x - 3, c.z - 7, { facing: Math.PI });
       spawn('archer', c.x + 7, c.z + 5, { facing: Math.PI / 2 });
       spawn('priest', c.x + 1.5, c.z - 1.5, { facing: Math.PI });
-      run.item = this.makeItem('Brimstone Crown', 'crown', c.x, c.z, 1.0);
-    } else if (o.id === 'traitor') {
-      const t = TRAITOR_POST;
-      run.target = spawn('traitor', t.x, t.z, { facing: Math.PI * 0.75, label: 'Vargash' });
+      // Deeper planes guard their camps more heavily.
+      if (this.plane.index >= 3) spawn('officer', c.x - 2, c.z + 2, { facing: 0.5 });
+      run.item = this.makeItem(m.retrieve.item.name, m.retrieve.item.look, m.retrieve.item.color, c.x, c.z, 1.0);
+    } else if (o.main && o.kind === 'assassinate') {
+      const t = m.assassinate.post;
+      run.target = spawn(m.assassinate.target.kind, t.x, t.z, { facing: Math.PI * 0.75, label: m.assassinate.target.label });
       spawn('footsoldier', t.x + 4, t.z - 4, { patrol: ring(t.x, t.z, 6, 5) });
       spawn('footsoldier', t.x - 3, t.z + 5, { facing: 0.3 });
       spawn('archer', t.x - 4, t.z + 1, { facing: Math.PI });
-    } else if (o.id === 'bridge') {
-      // The imps and the waves arrive once you reach the bridge.
+      if (this.plane.index >= 3) spawn('priest', t.x + 2, t.z + 3, { facing: Math.PI });
+    } else if (o.main && o.kind === 'war') {
+      // The imps and the waves arrive once you reach the battlefield.
     } else if (o.spot) {
       const { x, z } = o.spot;
       if (o.template === 'patrol') {
@@ -477,7 +524,7 @@ export class Campaign {
         spawn('footsoldier', x + 3, z, { facing: 1 });
         spawn('footsoldier', x - 3, z + 2, { patrol: ring(x, z, 5, 3) });
         spawn('priest', x, z - 3, { facing: Math.PI });
-        run.item = this.makeItem('Soul Gem', 'gem', x, z, 0.4);
+        run.item = this.makeItem('Soul Gem', 'gem', 0xc040ff, x, z, 0.4);
       }
     }
     this.hooks.toast(`Mission: ${o.title}`);
@@ -485,11 +532,12 @@ export class Campaign {
     this.hooks.save();
   }
 
-  /** The crown on its altar, or a soul gem on the ground: glowing, slowly turning. */
-  private makeItem(name: string, look: 'crown' | 'gem', x: number, z: number, lift: number): Item {
+  /** A stolen treasure: a crown or a gem, glowing and slowly turning. */
+  private makeItem(name: string, look: 'crown' | 'gem', color: number, x: number, z: number, lift: number): Item {
     const mesh = new THREE.Group();
+    const c = new THREE.Color(color);
     if (look === 'crown') {
-      const gold = lambert(0xe0a020, 0x6a3a00);
+      const gold = lambert(color, c.clone().multiplyScalar(0.35).getHex());
       part(mesh, gold, 0.5, 0.14, 0.5, 0, 0, 0);
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * Math.PI * 2;
@@ -497,12 +545,12 @@ export class Campaign {
       }
       part(mesh, lambert(0xff3010, 0xff2000), 0.1, 0.1, 0.1, 0, 0.1, 0.26);
     } else {
-      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), new THREE.MeshLambertMaterial({ color: 0xc040ff, emissive: 0x6010a0, flatShading: true }));
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), new THREE.MeshLambertMaterial({ color, emissive: c.clone().multiplyScalar(0.5), flatShading: true }));
       mesh.add(gem);
     }
     const pos = new THREE.Vector3(x, heightAt(x, z) + lift, z);
     mesh.position.copy(pos);
-    this.scene.add(mesh);
+    this.root.add(mesh);
     return { name, mesh, pos, carried: false };
   }
 
@@ -511,7 +559,7 @@ export class Campaign {
     const a = this.active;
     if (!a) return;
     for (const f of [...a.fighters, ...a.allies]) if (!f.gone) f.dispose();
-    if (a.item) this.scene.remove(a.item.mesh);
+    if (a.item) this.root.remove(a.item.mesh);
     this.active = null;
   }
 
@@ -537,10 +585,12 @@ export class Campaign {
 
   update(dt: number, ctx: GameContext) {
     this.time += dt;
+    this.playerPos.copy(ctx.player.pos);
     this.ruler.update(dt, ctx.player.pos);
     this.updateChest(dt, ctx);
-    this.updateDrops(dt, ctx);
-    this.updateAmbient(dt, ctx);
+    this.updateDrops(dt);
+    this.updatePortal(dt, ctx);
+    this.updateAmbient(dt);
     const a = this.active;
     if (!a) return;
     if (a.item && !a.item.carried) {
@@ -551,7 +601,7 @@ export class Campaign {
     // Stealth: once anyone raises the alarm, the kill isn't unseen any more.
     if (a.unseen && a.target?.alive && a.fighters.some((f) => f.everAlerted)) a.unseen = false;
 
-    if (a.offer.id === 'bridge') this.updateBridge(dt, a);
+    if (a.offer.main && a.offer.kind === 'war') this.updateWar(dt, a);
     else if (a.phase === 'go') {
       if (a.target && !a.target.alive) this.objectiveDone(a, a.unseen ? `${a.target.label} is dead, and nobody saw you` : `${a.target.label} is dead`);
       else if (!a.target && !a.item && a.fighters.every((f) => !f.alive)) this.objectiveDone(a, 'The patrol is destroyed');
@@ -561,31 +611,36 @@ export class Campaign {
   private objectiveDone(a: Running, detail: string) {
     a.phase = 'return';
     sfx.missionDone();
-    this.hooks.announce('Objective complete', `${detail}. Return to Malphas.`);
+    this.hooks.announce('Objective complete', `${detail}. Return to ${this.rulerName}.`);
     this.hooks.save();
   }
 
-  /** The war at the western bridge: your imps against three waves of angels. */
-  private updateBridge(dt: number, a: Running) {
+  /** The war front: your imps against three waves of angels marching on the place you defend. */
+  private updateWar(dt: number, a: Running) {
     if (a.phase === 'return') return;
-    const b = WEST_BRIDGE;
+    const w = this.plane.missions.war;
+    const d = w.defend;
+    // Unit vector from the defended spot toward where the angels come from.
+    const toward = new THREE.Vector2(w.from.x - d.x, w.from.z - d.z).normalize();
+    const side = new THREE.Vector2(-toward.y, toward.x);
     if (a.phase === 'go') {
-      const p = this.playerPos;
-      if (Math.hypot(p.x - b.x, p.z - b.south) > 14) return;
+      if (Math.hypot(this.playerPos.x - d.x, this.playerPos.z - d.z) > 14) return;
       a.phase = 'fight';
       for (let i = 0; i < 6; i++) {
-        const imp = this.hooks.spawn('imp', b.x - 3 + (i % 3) * 3, b.south - 2 - Math.floor(i / 3) * 2, { facing: 0 });
+        const across = (i % 3) * 3 - 3;
+        const back = 2 + Math.floor(i / 3) * 2;
+        const imp = this.hooks.spawn('imp', d.x + side.x * across - toward.x * back, d.z + side.y * across - toward.y * back, { facing: Math.atan2(toward.x, toward.y) });
         a.allies.push(imp);
       }
       a.wave = 0;
       a.waveTimer = 3;
-      this.hooks.announce('Hold the bridge', 'Your imps stand with you');
+      this.hooks.announce(w.title, 'Your imps stand with you');
       return;
     }
     const left = a.fighters.filter((f) => f.alive).length;
     if (left > 0) return;
     if (a.wave >= 3) {
-      this.objectiveDone(a, 'The bridge held');
+      this.objectiveDone(a, 'The line held');
       return;
     }
     a.waveTimer -= dt;
@@ -598,25 +653,25 @@ export class Campaign {
       ['footsoldier', 'footsoldier', 'footsoldier', 'archer', 'archer'],
       ['officer', 'footsoldier', 'footsoldier', 'footsoldier', 'priest', 'archer'],
     ];
-    const goal = new THREE.Vector3(b.x, 0, b.south - 4);
+    const goal = new THREE.Vector3(d.x, 0, d.z);
+    const captain = CAPTAIN_NAMES[this.plane.index % CAPTAIN_NAMES.length];
     waves[a.wave - 1].forEach((kind, i) => {
-      const x = b.x - 4 + (i % 4) * 2.5;
-      const z = b.north + Math.floor(i / 4) * 2.5;
-      const f = this.hooks.spawn(kind, x, z, { alert: true, goal, facing: Math.PI, label: kind === 'officer' ? 'Captain Auriel' : undefined });
+      const across = (i % 4) * 2.5 - 3.75;
+      const back = Math.floor(i / 4) * 2.5;
+      const x = w.from.x + side.x * across + toward.x * back;
+      const z = w.from.z + side.y * across + toward.y * back;
+      const f = this.hooks.spawn(kind, x, z, { alert: true, goal, facing: Math.atan2(-toward.x, -toward.y), label: kind === 'officer' ? `Captain ${captain}` : undefined });
       a.fighters.push(f);
     });
-    this.hooks.toast(`Wave ${a.wave} of 3: angels on the bridge!`);
+    this.hooks.toast(`Wave ${a.wave} of 3: the angels are coming!`);
   }
 
-  private playerPos = new THREE.Vector3();
-
-  /** Angel patrols roaming the plain between missions; they return a while after being wiped out. */
-  private updateAmbient(dt: number, ctx: GameContext) {
-    this.playerPos.copy(ctx.player.pos);
+  /** Angel patrols roaming the plane between missions; they return a while after being wiped out. */
+  private updateAmbient(dt: number) {
     for (const p of this.ambient) {
       if (p.fighters.some((f) => f.alive)) continue;
       p.respawn -= dt;
-      const far = Math.hypot(ctx.player.pos.x - p.at.x, ctx.player.pos.z - p.at.z) > 45;
+      const far = Math.hypot(this.playerPos.x - p.at.x, this.playerPos.z - p.at.z) > 45;
       if (p.respawn > 0 || !far) continue;
       p.fighters = [];
       p.respawn = 90;
@@ -627,6 +682,47 @@ export class Campaign {
     }
   }
 
+  private updatePortal(dt: number, ctx: GameContext) {
+    const m = this.portalGlow.material as THREE.MeshBasicMaterial;
+    m.opacity = 0.55 + Math.sin(this.time * 3) * 0.15;
+    if (Math.random() < dt * 20) {
+      const y = heightAt(PORTAL.x, PORTAL.z) + 0.5 + Math.random() * 3.6;
+      ctx.fire.burst(new THREE.Vector3(PORTAL.x, y, PORTAL.z + (Math.random() - 0.5) * 2.4), 0xff6a10, 1, 0.8, { gravity: -1, life: 0.6, size: 0.1 });
+    }
+  }
+
+  // ---------- Travel ----------
+
+  /** The Hellgate: every plane, and whether you can go there. */
+  travelDialog(rank: number): Dialog {
+    const cards: Dialog['cards'] = ALL_PLANE_NAMES.map((name, i) => {
+      const index = i + 1;
+      const here = index === this.plane.index;
+      const built = index <= BUILT_PLANES;
+      const ranked = rank >= index - 1;
+      const def = PLANES[i];
+      let button = 'Travel';
+      let text = built ? `Ruled by ${def.ruler.name}, ${def.ruler.title}. Suggested level ${def.level}.` : 'The way down has not been opened yet.';
+      if (here) button = 'You are here';
+      else if (!built) button = 'Not yet';
+      else if (!ranked) {
+        button = 'Locked';
+        text += ` Reach the rank of ${RANKS[index - 1]} to go there.`;
+      }
+      return {
+        title: `${ordinal(index)} Plane: ${name}`,
+        tag: built && ranked ? (here ? 'Here' : 'Open') : 'Sealed',
+        main: here,
+        text,
+        reward: '',
+        button,
+        disabled: here || !built || !ranked,
+        act: () => this.hooks.travel(index),
+      };
+    });
+    return { name: 'The Hellgate', title: 'Every plane you have earned is open to you', speech: 'Fire roars through the gate. Choose where it takes you.', cards };
+  }
+
   // ---------- Weapons on the ground ----------
 
   dropWeapon(w: Weapon, at: THREE.Vector3) {
@@ -635,25 +731,28 @@ export class Campaign {
     model.rotation.x = Math.PI / 2;
     model.position.y = 0.15;
     group.add(model);
-    // A pillar of light marks it, colored by quality.
-    const beam = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: w.enchant ? WEAPON_ENCHANTS[w.enchant].color : QUALITY_GLOW[w.quality], transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+    // A pillar of light marks it, colored by quality (or enchantment).
+    const beam = new THREE.Mesh(
+      box,
+      new THREE.MeshBasicMaterial({ color: w.enchant ? WEAPON_ENCHANTS[w.enchant].color : QUALITY_GLOW[w.quality], transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
     beam.scale.set(0.12, 2.2, 0.12);
     beam.position.y = 1.1;
     group.add(beam);
     const pos = new THREE.Vector3(at.x, groundAt(at.x, at.z, 0.2), at.z);
     group.position.copy(pos);
-    this.scene.add(group);
+    this.root.add(group);
     this.drops.push({ weapon: w, group, pos, age: 0 });
   }
 
-  private updateDrops(dt: number, _ctx: GameContext) {
+  private updateDrops(dt: number) {
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
       d.age += dt;
       d.group.children[0].rotation.z += dt * 0.8;
       d.group.position.y = d.pos.y + 0.1 + Math.sin(d.age * 2) * 0.05;
       if (d.age > 150) {
-        this.scene.remove(d.group);
+        this.root.remove(d.group);
         this.drops.splice(i, 1);
       }
     }
@@ -674,14 +773,16 @@ export class Campaign {
 
   private openChest() {
     if (this.chestOpened) return;
-    this.chestOpened = true;
+    this.progress.chests.add(this.plane.index);
     sfx.chestOpen();
     const p = this.chest.position;
     const at = new THREE.Vector3(p.x, p.y + 0.8, p.z);
-    this.hooks.dropGold(at, 30, 5);
+    // Deeper chests hold more.
+    const gold = 150 * this.plane.index;
+    this.hooks.dropGold(at, 30, gold / 30);
     const ids: WeaponId[] = ['sword', 'spear', 'axe', 'hammer', 'scythe', 'bow', 'javelin'];
     this.dropWeapon({ id: ids[Math.floor(Math.random() * ids.length)], quality: 2 as Quality, enchant: randomWeaponEnchant() }, new THREE.Vector3(p.x + 0.8, p.y, p.z + 0.4));
-    this.hooks.announce('Treasure!', 'The old lords’ chest: 150 gold and an enchanted weapon');
+    this.hooks.announce('Treasure!', `${gold} gold and an enchanted weapon`);
     this.hooks.save();
   }
 
@@ -689,7 +790,8 @@ export class Campaign {
 
   interactables(ctx: GameContext, takeWeapon: (w: Weapon, from: THREE.Vector3) => void): Interactable[] {
     const out: Interactable[] = [];
-    out.push({ pos: this.ruler.pos.clone().setY(this.ruler.pos.y + 1), label: 'Speak with Malphas', range: 6, act: () => {} });
+    out.push({ pos: this.ruler.pos.clone().setY(this.ruler.pos.y + 1), label: `Speak with ${this.rulerName}`, range: 6, kind: 'ruler', act: () => {} });
+    out.push({ pos: new THREE.Vector3(PORTAL.x, heightAt(PORTAL.x, PORTAL.z) + 1, PORTAL.z), label: 'Enter the Hellgate', range: 3.5, kind: 'portal', act: () => {} });
     for (const d of this.drops) {
       out.push({
         pos: d.pos,
@@ -699,7 +801,7 @@ export class Campaign {
           const i = this.drops.indexOf(d);
           if (i < 0) return;
           this.drops.splice(i, 1);
-          this.scene.remove(d.group);
+          this.root.remove(d.group);
           takeWeapon(d.weapon, d.pos);
         },
       });
@@ -713,7 +815,7 @@ export class Campaign {
         range: 2.6,
         act: () => {
           item.carried = true;
-          this.scene.remove(item.mesh);
+          this.root.remove(item.mesh);
           sfx.pickup();
           // Every guard knows the moment it's gone.
           for (const f of a.fighters) if (f.alive) f.becomeAlert(ctx, ctx.player, false);
@@ -722,29 +824,28 @@ export class Campaign {
       });
     }
     if (!this.chestOpened) {
-      out.push({ pos: this.chest.position, label: 'Open the old lords’ chest', range: 2.4, act: () => this.openChest() });
+      out.push({ pos: this.chest.position, label: 'Open the treasure chest', range: 2.4, act: () => this.openChest() });
     }
     return out;
   }
 
-  /** Whether the "speak" interactable is Malphas (the dialog opens through main). */
-  isRuler(i: Interactable) {
-    return i.label === 'Speak with Malphas';
-  }
-
   /** The current goal: text at the top of the screen and a marker in the world. */
-  objective(level: number): { text: string; at: THREE.Vector3 | null } {
-    void level;
+  objective(): { text: string; at: THREE.Vector3 | null } {
+    const name = this.rulerName;
     const ruler = this.ruler.pos.clone().setY(this.ruler.pos.y + 3);
     const a = this.active;
-    if (!a) return { text: this.talked ? 'Speak with Malphas for a mission' : 'Speak with Malphas, ruler of the First Plane', at: ruler };
-    if (a.phase === 'return') return { text: `Return to Malphas${a.item ? ` with the ${a.item.name}` : ''}`, at: ruler };
+    if (!a) {
+      if (!this.progress.talked.has(this.plane.index)) return { text: `Speak with ${name}, ${this.plane.ruler.title}`, at: ruler };
+      return { text: `Speak with ${name} for a mission`, at: ruler };
+    }
+    if (a.phase === 'return') return { text: `Return to ${name}${a.item ? ` with the ${a.item.name}` : ''}`, at: ruler };
     const o = a.offer;
     const v = (x: number, z: number) => new THREE.Vector3(x, heightAt(x, z) + 2, z);
-    if (o.id === 'bridge') {
-      if (a.phase === 'go') return { text: 'Go to the western bridge over the great river', at: v(WEST_BRIDGE.x, WEST_BRIDGE.south) };
+    if (o.main && o.kind === 'war') {
+      const d = this.plane.missions.war.defend;
+      if (a.phase === 'go') return { text: `Go to the battlefield: ${o.title}`, at: v(d.x, d.z) };
       const left = a.fighters.filter((f) => f.alive).length;
-      return { text: left > 0 ? `Hold the bridge: wave ${a.wave} of 3 (${left} left)` : `Hold the bridge: wave ${a.wave + 1} of 3 is coming`, at: v(WEST_BRIDGE.x, WEST_BRIDGE.south + 6) };
+      return { text: left > 0 ? `Hold the line: wave ${a.wave} of 3 (${left} left)` : `Hold the line: wave ${a.wave + 1} of 3 is coming`, at: v(d.x, d.z) };
     }
     if (a.target) {
       const t = a.target;
@@ -764,4 +865,9 @@ export class Campaign {
 
 function rewardText(o: Offer) {
   return `${o.reward.xp} XP · ${o.reward.gold} gold${o.kind === 'assassinate' ? ' (×2 gold unseen)' : ''}`;
+}
+
+const ORDINALS = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth'];
+function ordinal(n: number) {
+  return ORDINALS[n - 1] ?? `${n}th`;
 }

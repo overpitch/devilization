@@ -116,10 +116,15 @@ export interface SpawnOptions {
   alert?: boolean;
   /** Where it heads once alert, if nobody is in sight (an attack wave's objective). */
   goal?: THREE.Vector3;
+  /** Deeper planes' angels are stronger: health and XP times this, damage a little less. */
+  power?: number;
 }
 
 export class Fighter implements Foe, HellBody {
   readonly def: KindDef;
+  /** How much harder this fighter hits than its kind's base (deeper planes). */
+  private readonly damageMult: number;
+  private readonly power: number;
   readonly side: Side;
   readonly pos = new THREE.Vector3();
   readonly radius: number;
@@ -172,7 +177,7 @@ export class Fighter implements Foe, HellBody {
   private readonly dropRoll = Math.random();
 
   constructor(
-    private readonly scene: THREE.Scene,
+    private readonly scene: THREE.Object3D,
     readonly kind: FighterKind,
     x: number,
     z: number,
@@ -182,7 +187,9 @@ export class Fighter implements Foe, HellBody {
     const def = (this.def = KINDS[kind]);
     this.side = def.side;
     this.radius = def.radius;
-    this.hp = this.maxHp = def.hp;
+    this.power = opts.power ?? 1;
+    this.damageMult = 1 + (this.power - 1) * 0.75;
+    this.hp = this.maxHp = Math.round(def.hp * this.power);
     this.label = opts.label ?? null;
     this.pos.set(x, groundAt(x, z, 0.3), z);
     this.home.copy(this.pos);
@@ -316,7 +323,8 @@ export class Fighter implements Foe, HellBody {
       drop = { id: d.id, quality: Math.max(d.minQuality ?? 0, rollQuality()) as Quality };
       if (Math.random() < (d.enchantChance ?? 0)) drop.enchant = randomWeaponEnchant();
     }
-    return { xp: this.def.xp, gold: this.def.gold, drop };
+    // Gold stays the same on every plane: 10 from every angel.
+    return { xp: Math.round(this.def.xp * this.power), gold: this.def.gold, drop };
   }
 
   // ---------- Being hurt ----------
@@ -673,14 +681,14 @@ export class Fighter implements Foe, HellBody {
     if (def.attack === 'melee') {
       sfx.angelSwing(vol);
       const facing = Math.abs(wrapAngle(Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z) - this.yaw)) < 1.3;
-      if (edge < def.reach + 0.4 && facing) t.takeDamage(def.damage, ctx, { attacker: this });
+      if (edge < def.reach + 0.4 && facing) t.takeDamage(def.damage * this.damageMult, ctx, { attacker: this });
     } else if (def.attack === 'bow') {
       sfx.bowShot(vol);
-      ctx.projectiles.fire('arrow', chest, tmp.set(t.pos.x, t.pos.y + 1.2, t.pos.z), def.damage, t);
+      ctx.projectiles.fire('arrow', chest, tmp.set(t.pos.x, t.pos.y + 1.2, t.pos.z), def.damage * this.damageMult, t);
     } else {
       const ally = this.woundedAlly(ctx);
       if (ally) {
-        ally.hp = Math.min(ally.maxHp, ally.hp + 30);
+        ally.hp = Math.min(ally.maxHp, ally.hp + 30 * this.power);
         sfx.heal(vol);
         const from = chest.clone();
         const to = ally.chest();
@@ -688,7 +696,7 @@ export class Fighter implements Foe, HellBody {
         ctx.fire.burst(to, 0xfff4c0, 20, 2, { gravity: -2, life: 0.8, size: 0.1 });
       } else {
         sfx.cast(vol);
-        ctx.projectiles.fire('bolt', chest, tmp.set(t.pos.x, t.pos.y + 1.2, t.pos.z), def.damage, t);
+        ctx.projectiles.fire('bolt', chest, tmp.set(t.pos.x, t.pos.y + 1.2, t.pos.z), def.damage * this.damageMult, t);
       }
     }
   }

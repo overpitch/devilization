@@ -29,6 +29,18 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 
 ## What's in so far
 
+### Milestone 5
+
+- **The Hellgate** stands beside every ruler's lair. Press E at it to travel to any plane your rank has opened, deeper or back up.
+- **Promotions:** finish a plane's three main missions and its ruler raises your rank, which opens the next plane: Imp → Fiend → Hellguard → Pit Captain → Hellknight → Warlord.
+- **Four new planes,** each with its own ground, sky, liquid, drifting motes, scenery, ruler, three main missions, angel camp, watchpost and treasure chest on a geyser pillar:
+  - **The Ash Wastes** (suggested level 5): grey dunes under falling ash, ruled by **Bael**.
+  - **The Bone Forest** (level 10): a forest of bone trees and a river of blood, ruled by **Morax the Bone King**.
+  - **The Sulfur Swamps** (level 15): acid rivers and pools, sulfur crystals and vents, ruled by **Vepar**.
+  - **The Obsidian City** (level 20): a grid of obsidian towers and lava canals, ruled by **Asmodar the Tyrant**.
+- **Angels get stronger** deeper down (more health, harder hits, more XP). Gold stays at 10 per angel everywhere. Missions and chests pay more on deeper planes.
+- Your progress on every plane is saved, and you're back on the plane you left when you continue.
+
 ### Milestone 4
 
 - **The Armory** (pause menu): a weaponsmith, an armorer, and *Your gear*, where you sell what you carry. Enchanted stock changes after every mission you finish.
@@ -91,14 +103,15 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 | File | What it does |
 |---|---|
 | `src/main.ts` | Setup, game loop, menus, interacting, saving, death and respawn |
-| `src/campaign.ts` | Malphas, missions, the angels' camp and watchpost, the treasure chest, patrols, weapons on the ground, objectives |
+| `src/campaign.ts` | The current plane's ruler, missions, camp, watchpost, treasure chest, Hellgate, patrols, weapons on the ground, objectives |
 | `src/fighter.ts` | Angels, the traitor and imps: models, awareness, AI, attacks, death |
 | `src/projectiles.ts` | Holy arrows and bolts of light; your burning arrows and javelins |
 | `src/weapons.ts` | Weapons, armor, enchantments, prices, and blocky weapon models |
 | `src/armory.ts` | The armory's stock, buying and selling |
-| `src/layout.ts` | Where the lair, camps, bridge, patrols and treasure are |
+| `src/planes.ts` | Every plane as data: ground, sky, liquid, scenery, ruler, missions and where things are |
+| `src/layout.ts` | Places that are the same on every plane: the lair, the spawn point, the Hellgate |
 | `src/trainingAngel.ts` | Dazed training angels |
-| `src/world.ts` | Block terrain, lava rivers and lakes, scenery, sky, lighting, movement against blocks |
+| `src/world.ts` | Builds any plane: block terrain, rivers and lakes, city blocks, scenery, sky, lighting; movement against blocks |
 | `src/geysers.ts` | Fire geysers |
 | `src/player.ts` | The demon: movement, jumping, lava, flail swings and hits, levels, hellfire, fire breath and spike aiming |
 | `src/powers.ts` | Fire breath (shared with the dog) and ground spikes |

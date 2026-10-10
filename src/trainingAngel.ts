@@ -76,7 +76,7 @@ export class TrainingAngel implements Foe {
   private hurtSoundTimer = 0;
   private struggle = Math.random() * 10;
 
-  constructor(scene: THREE.Scene, x: number, z: number, facing: number, barLayer: HTMLElement) {
+  constructor(scene: THREE.Object3D, x: number, z: number, facing: number, barLayer: HTMLElement) {
     this.pos.set(x, groundAt(x, z, 0.3), z);
     this.h = createHumanoid({ skin: 0xf2dcc4, shirt: 0xf0ece2, pants: 0xe4ddca, boots: 0xc9a24a, eyes: 0x7ac0ff, glowingEyes: true, belt: 0xc9a24a, armor: 0xd8c070 });
     this.h.root.rotation.y = facing;
@@ -254,6 +254,12 @@ export class TrainingAngel implements Foe {
     const chest = new THREE.Vector3(this.pos.x, this.pos.y + 1.2, this.pos.z);
     ctx.fire.burst(chest, 0xfff4c0, 30, 3, { gravity: -2, life: 0.8, size: 0.1, spread: 0.4 });
     sfx.angelAppear(volumeAt(this.pos.distanceTo(ctx.player.pos)));
+  }
+
+  /** Removes it from the world (leaving the plane). */
+  dispose() {
+    this.tilt.removeFromParent();
+    this.bar.remove();
   }
 
   /** Health bar floating over the angel once it has been hurt. */

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GEYSERS, heightAt } from './world';
+import { heightAt, planeGeysers } from './world';
+import { plane } from './planes';
 import { sfx, volumeAt } from './audio';
 import type { GameContext } from './types';
 
@@ -28,9 +29,7 @@ interface Geyser {
   thrown: Set<object>;
 }
 
-const columnMats = [0xff4a0a, 0xff8a1a, 0xffd04a].map(
-  (color) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }),
-);
+const columnMat = (color: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
 const columnGeo = new THREE.BoxGeometry(1, 1, 1);
 
 /** Vents in the ground that rumble, then shoot a pillar of fire high into the air. */
@@ -38,8 +37,10 @@ export class Geysers {
   readonly items: Geyser[] = [];
   private readonly tmp = new THREE.Vector3();
 
-  constructor(scene: THREE.Scene) {
-    for (const g of GEYSERS) {
+  /** Builds the current plane's geysers under `scene` (the plane's root). */
+  constructor(scene: THREE.Object3D) {
+    const columnMats = plane().geyserColors.map(columnMat);
+    for (const g of planeGeysers()) {
       const column = new THREE.Group();
       column.position.set(g.x, heightAt(g.x, g.z), g.z);
       // Nested boxes: a white-hot core inside orange flame.

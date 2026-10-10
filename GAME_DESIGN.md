@@ -124,10 +124,10 @@ A general of the angel army, fought at the end of the angels' war camp. When the
 Each plane has its own look. Plane 1 is the one you described; the others are working ideas.
 
 1. **Lava plains:** an open plain with rivers of lava and geysers of fire. Lava and fire burn angels but not demons.
-2. **Ash wastes**
-3. **Bone forest**
-4. **Sulfur swamps**
-5. **Obsidian city**
+2. **Ash wastes:** grey dunes under falling ash, lava lakes. Ruled by Bael.
+3. **Bone forest:** forests of bone trees and a river of blood. Ruled by Morax the Bone King.
+4. **Sulfur swamps:** acid rivers and pools, sulfur crystals and vents. Ruled by Vepar.
+5. **Obsidian city:** a grid of obsidian towers and lava canals. Ruled by Asmodar the Tyrant.
 6. **Chain canyons**
 7. **Frozen hell**
 8. **Burning sky:** floating islands (flight unlocks around here)
@@ -157,9 +157,10 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 2. ✅ **Hero and HUD:** name entry (demon and dog), health, hellfire, XP, gold, leveling, saving, fire breath and ground spikes; the dog's horn charge (level 5) and fire breath (level 10).
 3. ✅ **First plane playable:** angel types (footsoldier, archer, priest, captain), Malphas's lair, three main missions (one of each type) and repeatable side missions, imp allies, stealth and silent kills, weapon drops (sword, spear, axe), the treasure chest on the geyser pillar, death and respawn, saving, and returning to the lair from the pause menu.
 4. ✅ **Armory and gear:** the armory in the pause menu (weaponsmith, armorer, selling), eight weapons including the longbow and javelins, three kinds of armor, three weapon and four armor enchantments, and natural armor at level 50.
-5. **Planes 2–9:** themes, ranks, travel between planes, size change and flight, size puzzles.
-6. **Plane 10 and the ending:** the general, Demon Lord ending, endless missions.
-7. **Polish:** music, sound, balancing, title screen, GitHub Pages deploy.
+5. ✅ **Planes 2–5:** travel between planes (descending, and going back up), promotions through the ranks, and four new planes (ash wastes, bone forest, sulfur swamps, obsidian city), each with its own look, ruler, missions and treasure chest.
+6. **Planes 6–9, size and flight:** four more planes (chain canyons, frozen hell, burning sky, the Abyss), changing size at level 30, flight at level 40, and puzzles that need you tiny or huge.
+7. **Plane 10 and the ending:** the general, Demon Lord ending, endless missions.
+8. **Polish:** music, sound, balancing, title screen.
 
 ## Open questions (defaults are used until decided)
 

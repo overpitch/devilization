@@ -24,7 +24,7 @@ const CONTROLS: [string, string][] = [
   ['Esc', 'Pause: armory, options, return to the lair'],
 ];
 
-const KIND_TAG = { war: 'War front', retrieve: 'Retrieval', assassinate: 'Assassination' } as const;
+
 
 const DEMON_NAMES = ['Azgoth', 'Morgrath', 'Vexis', 'Grimtooth', 'Belzar', 'Skarn', 'Maldrek', 'Ashgore', 'Nyxra', 'Krull', 'Zagan', 'Vorr', 'Ignarok', 'Sulvane'];
 const DOG_NAMES = ['Cinder', 'Brimstone', 'Ember', 'Scorch', 'Fang', 'Ash', 'Hellbark', 'Sulfur', 'Char', 'Blaze', 'Gnash', 'Smolder'];
@@ -249,6 +249,8 @@ export class Hud {
   showRuler(d: Dialog | null) {
     $('ruler-screen').classList.toggle('hidden', !d);
     if (!d) return;
+    $('ruler-name').textContent = d.name;
+    $('ruler-title').textContent = d.title;
     $('ruler-speech').textContent = `“${d.speech}”`;
     const cards = $('ruler-cards');
     cards.innerHTML = '';
@@ -260,7 +262,7 @@ export class Hud {
       h.textContent = c.title;
       const tag = document.createElement('span');
       tag.className = 'tag';
-      tag.textContent = `${KIND_TAG[c.kind]}${c.main ? '' : ' · side'}`;
+      tag.textContent = c.tag;
       h.appendChild(tag);
       const p = document.createElement('p');
       p.textContent = c.text;
@@ -270,6 +272,7 @@ export class Hud {
       const b = document.createElement('button');
       b.textContent = c.button;
       if (c.button === 'Abandon') b.className = 'secondary';
+      b.disabled = !!c.disabled;
       b.addEventListener('click', () => c.act());
       el.append(h, b, p, r);
       cards.appendChild(el);

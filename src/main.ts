@@ -1,13 +1,14 @@
 import './style.css';
 import * as THREE from 'three';
 import { Input } from './input';
-import { createWorld, lavaNearness, moveBody, SPAWN, TRAINING } from './world';
+import { createWorld, heightAt, isLava, lavaNearness, moveBody, SPAWN, TRAINING, type World } from './world';
 import { THRONE } from './layout';
+import { plane, setPlane } from './planes';
 import { Player } from './player';
 import { Dog } from './dog';
 import { TrainingAngel } from './trainingAngel';
 import { Fighter, type FighterKind, type SpawnOptions } from './fighter';
-import { Campaign, type Interactable } from './campaign';
+import { Campaign, type CampaignHooks, type Interactable, type Progress } from './campaign';
 import { Projectiles } from './projectiles';
 import { Geysers } from './geysers';
 import { FirstPersonCamera } from './camera';
@@ -45,10 +46,8 @@ document.getElementById('app')!.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 220);
-const world = createWorld(scene);
 const debris = new Particles(scene, false, 600);
 const fire = new Particles(scene, true, 1000);
-const geysers = new Geysers(scene);
 const spikes = new Spikes(scene);
 const pickups = new Pickups(scene);
 const projectiles = new Projectiles(scene);
@@ -68,12 +67,16 @@ let armoryTab: ArmoryTab = 'weapons';
 player.ballAt = () => viewModel.ballWorld;
 player.onLand = (speed) => cam.addShake(Math.min(speed / 50, 0.3));
 
-// Three captured angels standing dazed on the training ground, facing the lair.
-const trainingAngels = [
-  [TRAINING.x - 4.5, TRAINING.z + 1],
-  [TRAINING.x, TRAINING.z + 3],
-  [TRAINING.x + 4.5, TRAINING.z + 1],
-].map(([x, z]) => new TrainingAngel(scene, x, z, Math.atan2(SPAWN.x - x, SPAWN.z - z), hud.barLayer));
+/** What you've achieved across every plane. */
+const progress: Progress = { done: new Set(), chests: new Set(), talked: new Set(), sideDone: 0 };
+
+// The current plane: everything in it hangs from planeRoot, so leaving is just removing it.
+let planeRoot = new THREE.Group();
+let world: World | null = null;
+let geysers: Geysers;
+let campaign: Campaign;
+/** The dazed angels on the First Plane's training ground. */
+let trainingAngels: TrainingAngel[] = [];
 
 /** Every fighter in the world: angels, the traitor, your imps. */
 const fighters: Fighter[] = [];
@@ -87,9 +90,8 @@ function applySettings(s: Settings) {
   const low = s.graphics === 'low';
   renderer.setPixelRatio(low ? Math.min(window.devicePixelRatio, 1) : Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
-  world.setShadows(!low);
+  world?.setShadows(!low);
 }
-applySettings(settings);
 // Browsers only allow sound after the player interacts; start it on the first key or click.
 for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, () => initAudio(), { once: true });
 
@@ -111,7 +113,7 @@ const ctx: GameContext = {
   fighters,
   debris,
   fire,
-  geysers,
+  geysers: null as unknown as Geysers, // set when a plane is built
   spikes,
   projectiles,
   floatText: (at, text, kind) => floaters.spawn(at, text, kind),
@@ -145,12 +147,13 @@ player.onAssassinate = (foe) => {
 };
 
 function spawnFighter(kind: FighterKind, x: number, z: number, opts?: SpawnOptions) {
-  const f = new Fighter(scene, kind, x, z, hud.barLayer, opts);
+  // Angels are stronger on deeper planes.
+  const f = new Fighter(planeRoot, kind, x, z, hud.barLayer, { power: plane().power, ...opts });
   fighters.push(f);
   return f;
 }
 
-const campaign = new Campaign(scene, {
+const campaignHooks: CampaignHooks = {
   spawn: spawnFighter,
   reward: (xp, gold) => {
     player.gold += gold;
@@ -164,15 +167,58 @@ const campaign = new Campaign(scene, {
   promoted: (rank) => {
     player.rank = rank;
     sfx.unlock();
-    hud.announce(`Promoted: ${RANKS[rank]}`, 'Malphas has raised you up');
+    hud.announce(`Promoted: ${RANKS[rank]}`, `${plane().ruler.name} has raised you up. The Hellgate leads deeper.`);
     saveGame();
   },
   dropGold: (at, coins, each) => pickups.spawnGold(at, coins, each),
   refreshDialog: () => {
     if (hud.rulerOpen) hud.showRuler(campaign.dialog(player.level, player.rank));
   },
+  travel: (index) => travel(index),
   save: () => saveGame(),
-});
+};
+
+/** Tears down the plane you're on (if any) and builds another in its place. */
+function buildPlane(index: number) {
+  if (world) {
+    campaign.cancel();
+    scene.remove(planeRoot);
+    world.dispose();
+    for (const t of trainingAngels) t.dispose();
+  }
+  clearFighters();
+  projectiles.clear();
+  pickups.clear();
+  floaters.clear();
+  setPlane(index);
+  planeRoot = new THREE.Group();
+  scene.add(planeRoot);
+  world = createWorld(scene, planeRoot);
+  world.setShadows(settings.graphics !== 'low');
+  geysers = new Geysers(planeRoot);
+  ctx.geysers = geysers;
+  trainingAngels =
+    index === 1
+      ? [
+          [TRAINING.x - 4.5, TRAINING.z + 1],
+          [TRAINING.x, TRAINING.z + 3],
+          [TRAINING.x + 4.5, TRAINING.z + 1],
+        ].map(([x, z]) => new TrainingAngel(planeRoot, x, z, Math.atan2(SPAWN.x - x, SPAWN.z - z), hud.barLayer))
+      : [];
+  campaign = new Campaign(planeRoot, progress, campaignHooks);
+}
+
+/** Through the Hellgate: to another plane, arriving before its ruler. */
+function travel(index: number) {
+  if (index === plane().index) return;
+  hud.showRuler(null);
+  buildPlane(index);
+  spawn();
+  sfx.warHorn();
+  hud.announce(plane().name, `${plane().title} · suggested level ${plane().level}`);
+  saveGame();
+  lockPointer();
+}
 
 /** Picks up a weapon; with your hands full, the one you hold drops where you stand. */
 function takeWeapon(w: Weapon) {
@@ -219,10 +265,11 @@ function saveGame() {
     weapons: player.weapons,
     equipped: player.equipped,
     armor: player.armor,
-    missionsDone: [...campaign.done],
-    sideDone: campaign.sideDone,
-    chestOpened: campaign.chestOpened,
-    talked: campaign.talked,
+    plane: plane().index,
+    missionsDone: [...progress.done],
+    sideDone: progress.sideDone,
+    chests: [...progress.chests],
+    talkedPlanes: [...progress.talked],
     savedAt: Date.now(),
   });
 }
@@ -248,17 +295,20 @@ function enterWorld(save: SaveData) {
   dog.name = save.dogName;
   kills = save.kills;
   playTime = save.playTime;
-  clearFighters();
-  campaign.load(save.missionsDone, save.sideDone, save.chestOpened, save.talked);
+  progress.done = new Set(save.missionsDone);
+  progress.chests = new Set(save.chests);
+  progress.talked = new Set(save.talkedPlanes);
+  progress.sideDone = save.sideDone;
+  // You can't be on a plane your rank hasn't opened.
+  buildPlane(Math.min(save.plane, player.rank + 1));
   phase = 'playing';
   hud.showScreen('none');
   spawn();
-  pickups.clear();
-  hud.announce('The First Plane', 'The Lava Plains');
+  hud.announce(plane().name, plane().title);
   saveGame();
 }
 
-/** Puts you (and your dog) at the foot of Malphas's throne. */
+/** Puts you (and your dog) at the foot of the ruler's throne. */
 function spawn() {
   player.reset(SPAWN.x, SPAWN.z);
   cam.yaw = Math.atan2(THRONE.x - SPAWN.x, THRONE.z - SPAWN.z);
@@ -308,6 +358,13 @@ function closeArmory() {
 function openRuler() {
   player.stopPowers(ctx);
   hud.showRuler(campaign.dialog(player.level, player.rank));
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+/** The Hellgate's list of planes (shown in the same window as the ruler's dialog). */
+function openPortal() {
+  player.stopPowers(ctx);
+  hud.showRuler(campaign.travelDialog(player.rank));
   if (document.pointerLockElement) document.exitPointerLock();
 }
 
@@ -405,6 +462,9 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// The world behind the title is the plane your saved game is on.
+buildPlane(loadSave()?.plane ?? 1);
+applySettings(settings);
 spawn();
 if (testMode) enterWorld(loadSave() ?? newSave('Tester', 'Cinder'));
 else hud.showTitle(loadSave());
@@ -517,7 +577,8 @@ function tick(realDt: number) {
       if (player.assassinTarget) hud.setPrompt('Kill silently', true);
       else hud.setPrompt(target?.label ?? null);
       if (target && input.interactPressed) {
-        if (campaign.isRuler(target)) openRuler();
+        if (target.kind === 'ruler') openRuler();
+        else if (target.kind === 'portal') openPortal();
         else target.act();
       }
     } else hud.setPrompt(null);
@@ -556,12 +617,12 @@ function tick(realDt: number) {
     saveGame();
   }
 
-  world.update(realDt, phase === 'menu' ? camera.position : player.pos);
+  world?.update(realDt, phase === 'menu' ? camera.position : player.pos);
   setAmbience(phase === 'menu' ? 0.3 : 1 - lavaNearness(player.pos.x, player.pos.z) / 4);
   for (const a of trainingAngels) a.updateBar(camera);
   for (const f of fighters) f.updateBar(camera, player.pos);
   if (phase === 'playing') {
-    const o = campaign.objective(player.level);
+    const o = campaign.objective();
     hud.setObjective(o.text, o.at, camera, player.pos);
     hud.setWeapons(player.weapons, player.equipped, player.armor, player.armorReduction);
     hud.setCarrying(campaign.carrying);
@@ -619,12 +680,23 @@ Object.assign(window, {
   __game: {
     player,
     dog,
-    trainingAngels,
+    get trainingAngels() {
+      return trainingAngels;
+    },
     fighters,
-    campaign,
+    get campaign() {
+      return campaign;
+    },
+    progress,
+    travel,
+    heightAt,
+    isLava,
+    plane,
     armory,
     showArmory,
-    geysers,
+    get geysers() {
+      return geysers;
+    },
     spikes,
     pickups,
     projectiles,
