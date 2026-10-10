@@ -690,3 +690,255 @@ h2.second {
   pointer-events: none;
   z-index: 100;
 }
+
+/* ---------- Milestone 3 ---------- */
+
+.top-center {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 56vw);
+  text-align: center;
+  text-shadow: 0 2px 4px #000;
+}
+
+.objective {
+  font-size: 15px;
+  color: #f2e2d0;
+}
+
+.objective::before {
+  content: '◆ ';
+  color: #ff9a50;
+}
+
+.objective:empty::before {
+  content: none;
+}
+
+.carrying {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #ffd050;
+}
+
+.carrying.hidden,
+.prompt.hidden,
+.sneak.hidden,
+.marker.hidden {
+  display: none;
+}
+
+/* Objective marker: sits over the target, or pinned to the edge of the screen. */
+.marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 12px;
+  color: #ff9a50;
+  text-shadow: 0 1px 3px #000;
+  will-change: transform;
+}
+
+.marker-icon {
+  font-size: 18px;
+}
+
+.prompt {
+  position: absolute;
+  top: calc(50% + 40px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  font-size: 15px;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 160, 100, 0.5);
+  border-radius: 4px;
+}
+
+.prompt kbd {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 6px;
+  font: bold 13px Georgia, serif;
+  color: #1b0808;
+  background: #ff9a50;
+  border-radius: 3px;
+}
+
+.prompt.assassin {
+  border-color: #ff3010;
+  color: #ffb0a0;
+}
+
+.sneak {
+  position: absolute;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #b0a0d0;
+  text-shadow: 0 1px 3px #000;
+}
+
+/* Carried weapons, bottom left. */
+.weapons {
+  position: absolute;
+  left: 20px;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  text-shadow: 0 1px 2px #000;
+}
+
+.weapon-slot {
+  padding: 3px 10px;
+  color: rgba(242, 226, 208, 0.6);
+  background: rgba(0, 0, 0, 0.45);
+  border-left: 3px solid transparent;
+  border-radius: 2px;
+}
+
+.weapon-slot.equipped {
+  color: #f2e2d0;
+  border-left-color: #ff9a50;
+  background: rgba(60, 14, 8, 0.6);
+}
+
+.weapon-slot b {
+  margin-right: 6px;
+  color: #ff9a50;
+}
+
+/* Awareness over angels' heads. */
+.awareness {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font: bold 22px Georgia, serif;
+  text-shadow: 0 0 6px #000, 0 2px 2px #000;
+  will-change: transform;
+}
+
+.awareness.suspicious {
+  color: #ffe060;
+}
+
+.awareness.alert {
+  color: #ff3020;
+}
+
+.enemy-bar.hell div {
+  background: linear-gradient(#ff7a50, #a02010);
+}
+
+.enemy-bar.target {
+  width: 90px;
+  height: 8px;
+  overflow: visible;
+  border-color: #ff9a50;
+}
+
+.enemy-bar.target span {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  white-space: nowrap;
+  color: #ffd0b0;
+  text-shadow: 0 1px 3px #000;
+}
+
+.lair-reason {
+  min-height: 1.2em;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #c0a090;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Malphas's dialog */
+.panel.ruler {
+  max-width: 720px;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.speech {
+  margin: 0 auto 20px;
+  max-width: 600px;
+  font-size: 18px;
+  line-height: 1.5;
+  font-style: italic;
+  color: #ffd0b0;
+}
+
+.cards {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 14px;
+  align-items: center;
+  padding: 12px 14px;
+  background: rgba(30, 6, 4, 0.75);
+  border: 1px solid rgba(255, 120, 60, 0.35);
+  border-radius: 4px;
+}
+
+.card.main {
+  border-color: rgba(255, 180, 80, 0.7);
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #ffb070;
+}
+
+.card .tag {
+  margin-left: 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #c0a090;
+}
+
+.card p {
+  grid-column: 1;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #e0cbb8;
+}
+
+.card .reward {
+  font-size: 12px;
+  color: #ffd050;
+}
+
+.card button {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  font-size: 16px;
+  padding: 8px 18px;
+}

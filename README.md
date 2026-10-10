@@ -20,11 +20,29 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 | Swing the flail (click again during a swing to chain a second swing) | Click or `J` |
 | Breathe fire (from level 10) | Hold `F` |
 | Ground spikes (from level 15) | Hold `R` to aim, let go to strike |
+| Talk, take, open | `E` |
+| Sneak (kill unaware enemies from behind with a click) | Hold `C` |
+| Switch weapon | `1`–`4`, or `Q` for the next one |
 | Jump | `Space` |
 | Sprint | `Shift` |
-| Pause (and Options) | `Esc` |
+| Pause (Options, Return to the lair) | `Esc` |
 
 ## What's in so far
+
+### Milestone 3
+
+- **Malphas's lair:** you arrive (and return when banished) at the foot of Malphas's throne. Press E near him for missions.
+- **Angels that fight back:** footsoldiers (sword and shield), archers (holy arrows), priests (heal other angels, throw bolts of light) and captains. Lava and geysers burn them; they steer around lava.
+- **Main missions:** *Blood at the Bridge* (hold the western bridge with six imps against three waves), *The Stolen Crown* (take it back from the angels' camp across the eastern river), and *The Traitor of the Pits* (kill Vargash on the northwest mesa; unseen pays double). Finishing all three promotes you to **Fiend**.
+- **Side missions:** two at a time, at random spots on the plain: cull a patrol, silence a captain (unseen pays double), or recover a soul gem. Repeatable.
+- **Stealth:** angels on guard show a yellow **?** as they grow suspicious and a red **!** when they spot you. Hold C to sneak: slower, lower, and much harder to see. Walk up behind an unaware enemy and click for a silent kill. Loud kills alert everyone nearby; silent ones don't.
+- **Weapons:** angels drop their weapons (footsoldiers sometimes drop swords, captains always drop spears, Vargash drops his axe). Weapons come Notched, plain or Fine. Carry up to four; taking a fifth swaps it for the one in your hand. Each weapon has its own combo.
+- **Gold:** every angel drops 10 gold. Vargash drops 30.
+- **Treasure chest:** on top of a pillar south-east of the lair that's too tall to climb. Ride the geyser beside it. Inside: 150 gold and a Fine weapon.
+- **Ambient patrols** roam the plain and come back a while after you wipe them out.
+- **Death:** you return to the lair and the current mission fails; you keep your gold, XP and weapons.
+- **Return to the lair:** from the pause menu, when no mission is running and nothing is fighting you.
+- **Objective marker** on screen, and a prompt for anything you can use with E.
 
 ### Milestone 2
 
@@ -45,7 +63,7 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 - **Geysers:** they rumble and smoke, then shoot a column of fire that throws you high into the air without hurting you. Angels caught in one get burned.
 - **The spiked flail:** a side sweep (wide arc) chains into an overhead smash (more damage, narrower). The ball swings on its chain as you move and turn.
 - **Your demon-dog:** follows you, and joins in on any angel you hit, with a bite and a horn charge. It can't be hurt.
-- **The training ground:** three angels chained to posts. They don't fight back, and they come back a few seconds after you destroy them.
+- **The training ground:** three captured angels standing dazed, arms limp and heads bowed. They don't react or fight back, and they come back a few seconds after you destroy them.
 
 ## Debugging
 
@@ -61,7 +79,13 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 
 | File | What it does |
 |---|---|
-| `src/main.ts` | Setup, game loop, menus, death and respawn |
+| `src/main.ts` | Setup, game loop, menus, interacting, saving, death and respawn |
+| `src/campaign.ts` | Malphas, missions, the angels' camp and watchpost, the treasure chest, patrols, weapons on the ground, objectives |
+| `src/fighter.ts` | Angels, the traitor and imps: models, awareness, AI, attacks, death |
+| `src/projectiles.ts` | Holy arrows and bolts of light |
+| `src/weapons.ts` | Weapon stats, combos, quality, and blocky weapon models |
+| `src/layout.ts` | Where the lair, camps, bridge, patrols and treasure are |
+| `src/trainingAngel.ts` | Chained training angels |
 | `src/world.ts` | Block terrain, lava rivers and lakes, scenery, sky, lighting, movement against blocks |
 | `src/geysers.ts` | Fire geysers |
 | `src/player.ts` | The demon: movement, jumping, lava, flail swings and hits, levels, hellfire, fire breath and spike aiming |
@@ -69,10 +93,9 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 | `src/progression.ts` | XP curve, level stats, ranks, power unlock levels |
 | `src/pickups.ts` | Gold coins |
 | `src/save.ts` | Saved game |
-| `src/viewmodel.ts` | First-person arms and the flail, with a swinging ball and chain |
+| `src/viewmodel.ts` | First-person arms and weapons: the flail's swinging ball and chain, and swings for swords, spears and axes |
 | `src/camera.ts` | First-person camera, head bob, screen shake |
 | `src/dog.ts` | The demon-dog: following, biting, horn charge |
-| `src/angel.ts` | Chained training angels |
 | `src/character.ts` | Blocky humanoid model (from Evil One) |
 | `src/particles.ts` | Fire, sparks, dust and feathers |
 | `src/floaters.ts` | Floating damage numbers |

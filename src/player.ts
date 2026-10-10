@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import type { Input } from './input';
 import type { FirstPersonCamera } from './camera';
-import type { SwingKind } from './viewmodel';
-import type { Angel } from './angel';
-import type { GameContext } from './types';
+import type { Foe, GameContext } from './types';
+import { MAX_WEAPONS, qualityMult, STARTING_WEAPON, WEAPONS, type SwingDef, type Weapon, type WeaponId } from './weapons';
 import { groundAt, heightAt, isLava, LAVA_Y, moveBody } from './world';
 import { setBreathing, sfx } from './audio';
 import { clamp, smoothing, wrapAngle } from './util';
@@ -35,27 +34,14 @@ const SPIKE_RANGE = 18;
 const ENERGY_REGEN = 16;
 const ENERGY_REGEN_DELAY = 0.7;
 
-interface SwingDef {
-  /** Seconds the whole swing takes. */
-  dur: number;
-  /** Fraction of the swing when the ball lands. */
-  strike: number;
-  damage: number;
-  reach: number;
-  /** Half-angle (radians) of the arc in front of you that the swing covers. */
-  arc: number;
-  knockback: number;
-}
-
-const SWINGS: Record<SwingKind, SwingDef> = {
-  sweep: { dur: 0.56, strike: 0.5, damage: 14, reach: 3.1, arc: 1.15, knockback: 6 },
-  smash: { dur: 0.74, strike: 0.52, damage: 24, reach: 3.4, arc: 0.5, knockback: 4 },
-};
+const SNEAK_SPEED = 3.2;
+/** Eye height while sneaking. */
+const SNEAK_EYE = 1.3;
 
 const tmp = new THREE.Vector3();
 const fwd = new THREE.Vector3();
 
-/** The demon: moved in first person, fights with a spiked ball on a chain, fire and spikes. */
+/** The demon: moved in first person, fights with weapons (a spiked flail to start), fire and spikes. */
 export class Player {
   name = 'Imp';
   level = 1;
@@ -90,8 +76,15 @@ export class Player {
   inLava = false;
   /** 0..1: how recently you were hurt (drives the red edges of the screen). */
   hurtFlash = 0;
+  /** Holding C: slow, low, and much harder for angels to notice. */
+  sneaking = false;
+  /** An unaware enemy close in front of you that one blow would kill silently. */
+  assassinTarget: Foe | null = null;
+  /** The weapons you carry, and which one is in your hand. */
+  weapons: Weapon[] = [{ ...STARTING_WEAPON }];
+  equipped = 0;
   /** The angel you last hit and when; the dog joins in on it. */
-  lastTarget: Angel | null = null;
+  lastTarget: Foe | null = null;
   lastTargetTime = -Infinity;
 
   private vel = new THREE.Vector3();
@@ -99,6 +92,7 @@ export class Player {
   /** Smooths the camera when stepping up a block. */
   private eyeLag = 0;
   private sinceHurt = 99;
+  private crouch = 0;
   private sizzleTimer = 0;
   private time = 0;
 
@@ -111,13 +105,50 @@ export class Player {
   /** Locked powers only explain themselves once per key press. */
   private lockedHintShown = { breath: false, spikes: false };
 
-  private swing: { kind: SwingKind; time: number; struck: boolean } | null = null;
-  private nextKind: SwingKind = 'sweep';
+  private swing: { def: SwingDef; index: number; weapon: Weapon; time: number; struck: boolean } | null = null;
+  /** Which swing of the weapon's combo comes next. */
+  private comboIndex = 0;
   private queued = false;
 
   /** Where the ball is in the world (set by the view model), for dust when it hits the ground. */
   ballAt: (() => THREE.Vector3) | null = null;
   onLand?: (speed: number) => void;
+  /** A silent kill from behind. */
+  onAssassinate?: (foe: Foe) => void;
+
+  get weapon(): Weapon {
+    return this.weapons[this.equipped] ?? STARTING_WEAPON;
+  }
+
+  /** Seconds since anything hurt you. */
+  get calm() {
+    return this.sinceHurt;
+  }
+
+  /** Puts a weapon in hand. */
+  equip(index: number) {
+    if (index < 0 || index >= this.weapons.length || index === this.equipped || this.swing) return false;
+    this.equipped = index;
+    this.comboIndex = 0;
+    return true;
+  }
+
+  /**
+   * Takes a weapon. With a free hand it's added and equipped; otherwise it
+   * replaces the one in your hand, which is returned (to drop on the ground).
+   */
+  takeWeapon(w: Weapon): Weapon | null {
+    this.swing = null;
+    this.comboIndex = 0;
+    if (this.weapons.length < MAX_WEAPONS) {
+      this.weapons.push(w);
+      this.equipped = this.weapons.length - 1;
+      return null;
+    }
+    const old = this.weapons[this.equipped];
+    this.weapons[this.equipped] = w;
+    return old;
+  }
 
   get rankName() {
     return RANKS[this.rank];
@@ -177,7 +208,9 @@ export class Player {
     this.eyeLag = 0;
     this.swing = null;
     this.queued = false;
+    this.comboIndex = 0;
     this.hurtFlash = 0;
+    this.sinceHurt = 99;
     this.lastTarget = null;
   }
 
@@ -189,13 +222,18 @@ export class Player {
       out.y += Math.max(0.35, this.eyeHeight * (1 - this.deadTime * 1.6));
       return out;
     }
-    out.y += this.eyeHeight + this.eyeLag;
+    out.y += this.eyeHeight - (this.eyeHeight - SNEAK_EYE) * this.crouch + this.eyeLag;
     return out;
   }
 
-  /** The current swing and how far through it (0..1), for the view model. */
-  get swingInfo(): { kind: SwingKind; t: number } | null {
-    return this.swing ? { kind: this.swing.kind, t: this.swing.time / SWINGS[this.swing.kind].dur } : null;
+  /** The current swing's animation and how far through it (0..1), for the view model. */
+  get swingInfo(): { anim: string; t: number } | null {
+    return this.swing ? { anim: this.swing.def.anim, t: this.swing.time / this.swing.def.dur } : null;
+  }
+
+  /** Which weapon model is in your hand, for the view model. */
+  get weaponId(): WeaponId {
+    return this.weapon.id;
   }
 
   update(dt: number, ctx: GameContext, input: Input, cam: FirstPersonCamera) {
@@ -211,8 +249,10 @@ export class Player {
 
     // ----- Moving -----
     const move = input.moveVector();
-    this.sprinting = input.sprintHeld && move.z > 0.3 && !this.swing;
-    let speed = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
+    this.sneaking = input.sneakHeld && this.grounded;
+    this.crouch += ((this.sneaking ? 1 : 0) - this.crouch) * smoothing(10, dt);
+    this.sprinting = input.sprintHeld && move.z > 0.3 && !this.swing && !this.sneaking;
+    let speed = this.sneaking ? SNEAK_SPEED : this.sprinting ? SPRINT_SPEED : WALK_SPEED;
     if (this.swing || this.breathing) speed *= 0.75;
     if (this.inLava) speed *= LAVA_SLOW;
     cam.forward(fwd);
@@ -221,7 +261,7 @@ export class Player {
     const wishX = (fwd.x * move.z + rightX * move.x) * speed;
     const wishZ = (fwd.z * move.z + rightZ * move.x) * speed;
     // Quick to respond on the ground; drifting in the air.
-    const grip = smoothing(this.grounded ? 14 : 2.5, dt);
+    const grip = smoothing(this.grounded ? 14 : 4, dt);
     this.vel.x += (wishX - this.vel.x) * grip;
     this.vel.z += (wishZ - this.vel.z) * grip;
     moveBody(this.pos, this.vel.x * dt, this.vel.z * dt, this.radius, this.grounded ? STEP_UP : 0.25);
@@ -238,7 +278,12 @@ export class Player {
     this.bob += (moving - this.bob) * smoothing(8, dt);
     const before = Math.floor(this.walkPhase / Math.PI);
     this.walkPhase += flatSpeed * dt * 1.7;
-    if (Math.floor(this.walkPhase / Math.PI) !== before && this.grounded) sfx.step(Math.min(flatSpeed / SPRINT_SPEED, 1));
+    if (Math.floor(this.walkPhase / Math.PI) !== before && this.grounded) sfx.step(Math.min(flatSpeed / SPRINT_SPEED, 1) * (this.sneaking ? 0.3 : 1));
+
+    // Switching weapons: 1-4, or Q for the next one.
+    const pick = input.weaponPressed;
+    if (pick !== null) this.equip(pick);
+    if (input.cyclePressed && this.weapons.length > 1) this.equip((this.equipped + 1) % this.weapons.length);
 
     // ----- Lava: harmless to a demon, but it hisses and steams around you -----
     this.inLava = isLava(this.pos.x, this.pos.z) && this.pos.y < LAVA_Y + 0.1;
@@ -255,6 +300,7 @@ export class Player {
     this.sinceHurt += dt;
     if (this.sinceHurt > REGEN_DELAY) this.hp = Math.min(this.maxHp, this.hp + REGEN_RATE * dt);
 
+    this.assassinTarget = this.findAssassinTarget(ctx, cam);
     if (!this.breathing) this.updateSwing(dt, ctx, input, cam);
     this.updatePowers(dt, ctx, input, cam);
   }
@@ -396,38 +442,60 @@ export class Player {
 
   private updateSwing(dt: number, ctx: GameContext, input: Input, cam: FirstPersonCamera) {
     if (input.attackPressed) {
-      if (!this.swing) this.startSwing(this.nextKind);
+      if (!this.swing) this.startSwing();
       else this.queued = true;
     }
     const s = this.swing;
     if (!s) return;
-    const def = SWINGS[s.kind];
+    const def = s.def;
     s.time += dt;
     const t = s.time / def.dur;
-    if (!s.struck && t >= def.strike - 0.18 && t - dt / def.dur < def.strike - 0.18) sfx.swing(s.kind === 'smash');
+    if (!s.struck && t >= def.strike - 0.18 && t - dt / def.dur < def.strike - 0.18) sfx.swing(def.heavy);
     if (!s.struck && t >= def.strike) {
       s.struck = true;
-      this.strike(def, s.kind, ctx, cam);
+      this.strike(def, s.weapon, ctx, cam);
     }
     if (t >= 1) {
       this.swing = null;
-      // Clicking during a swing chains into the other swing.
-      const other: SwingKind = s.kind === 'sweep' ? 'smash' : 'sweep';
-      if (this.queued) this.startSwing(other);
-      else this.nextKind = 'sweep';
+      // Clicking during a swing chains into the next swing of the combo.
+      if (this.queued) this.startSwing();
+      else this.comboIndex = 0;
     }
   }
 
-  private startSwing(kind: SwingKind) {
-    this.swing = { kind, time: 0, struck: false };
+  private startSwing() {
+    const swings = WEAPONS[this.weapon.id].swings;
+    const index = this.comboIndex % swings.length;
+    this.swing = { def: swings[index], index, weapon: this.weapon, time: 0, struck: false };
     this.queued = false;
-    this.nextKind = kind === 'sweep' ? 'smash' : 'sweep';
+    this.comboIndex = index + 1;
   }
 
-  /** The ball lands: hit every angel in the arc in front of you. */
-  private strike(def: SwingDef, kind: SwingKind, ctx: GameContext, cam: FirstPersonCamera) {
+  /** An unaware enemy close in front of you, with its back turned. */
+  private findAssassinTarget(ctx: GameContext, cam: FirstPersonCamera): Foe | null {
+    for (const f of ctx.foes) {
+      if (!f.canAssassinate(this.pos)) continue;
+      const dx = f.pos.x - this.pos.x;
+      const dz = f.pos.z - this.pos.z;
+      if (Math.abs(wrapAngle(Math.atan2(dx, dz) - cam.yaw)) < 0.8) return f;
+    }
+    return null;
+  }
+
+  /** The blow lands: hit every enemy in the arc in front of you. */
+  private strike(def: SwingDef, weapon: Weapon, ctx: GameContext, cam: FirstPersonCamera) {
+    // An unaware enemy with its back to you dies in one silent blow.
+    const victim = this.findAssassinTarget(ctx, cam);
+    if (victim) {
+      victim.assassinate(ctx);
+      sfx.assassinate();
+      ctx.hitStop(0.15);
+      ctx.addShake(0.2);
+      this.onAssassinate?.(victim);
+      return;
+    }
     let hits = 0;
-    for (const a of ctx.angels) {
+    for (const a of ctx.foes) {
       if (!a.alive) continue;
       const dx = a.pos.x - this.pos.x;
       const dz = a.pos.z - this.pos.z;
@@ -435,19 +503,19 @@ export class Player {
       const dist = Math.hypot(dx, dz);
       if (dist > def.reach + a.radius || dy < -2 || dy > 3) continue;
       if (Math.abs(wrapAngle(Math.atan2(dx, dz) - cam.yaw)) > def.arc && dist > a.radius + 0.6) continue;
-      const damage = Math.round(def.damage * this.damageMult * (0.85 + Math.random() * 0.3));
+      const damage = Math.round(def.damage * qualityMult(weapon) * this.damageMult * (0.85 + Math.random() * 0.3));
       const dir = tmp.set(dx, 0, dz).normalize();
       a.takeHit(damage, dir, def.knockback, ctx);
-      ctx.floatText(new THREE.Vector3(a.pos.x, a.pos.y + 2.3, a.pos.z), String(damage), kind === 'smash' ? 'heavy' : 'damage');
+      ctx.floatText(new THREE.Vector3(a.pos.x, a.pos.y + 2.3, a.pos.z), String(damage), def.heavy ? 'heavy' : 'damage');
       this.lastTarget = a;
       this.lastTargetTime = this.time;
       hits++;
     }
     if (hits > 0) {
-      sfx.hit(kind === 'smash');
-      ctx.hitStop(kind === 'smash' ? 0.09 : 0.06);
-      ctx.addShake(kind === 'smash' ? 0.3 : 0.18);
-    } else if (kind === 'smash' && this.ballAt) {
+      sfx.hit(def.heavy);
+      ctx.hitStop(def.heavy ? 0.09 : 0.06);
+      ctx.addShake(def.heavy ? 0.3 : 0.18);
+    } else if (def.anim === 'smash' && this.ballAt) {
       // A miss slams into the ground.
       const at = this.ballAt();
       sfx.thud();

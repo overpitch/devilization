@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import type { Angel } from './angel';
-import type { GameContext } from './types';
+import type { Foe, GameContext, HellBody } from './types';
 import { groundAt, isLava, LAVA_Y, moveBody } from './world';
 import { sfx, volumeAt } from './audio';
 import { dampAngle, smoothing } from './util';
@@ -43,9 +42,11 @@ function part(parent: THREE.Object3D, mat: THREE.Material, w: number, h: number,
  * Your demon-dog: a horned hellhound that follows you, bites, and charges
  * with its horns. It can't be hurt.
  */
-export class Dog {
+export class Dog implements HellBody {
   name = 'Cinder';
   readonly pos = new THREE.Vector3();
+  /** It can't be hurt, so it never dies. */
+  readonly alive = true;
   readonly radius = 0.5;
   yaw = 0;
 
@@ -58,7 +59,7 @@ export class Dog {
 
   private state: State = 'follow';
   private stateTime = 0;
-  private target: Angel | null = null;
+  private target: Foe | null = null;
   private biteCooldown = 0;
   private chargeCooldown = 2;
   private breathCooldown = 1;
@@ -148,6 +149,12 @@ export class Dog {
     this.airborne = false;
   }
 
+  /** Blows glance off its hide: it can't be hurt. */
+  takeDamage(_amount: number, ctx: GameContext) {
+    ctx.fire.burst(new THREE.Vector3(this.pos.x, this.pos.y + 0.9, this.pos.z), 0xffd040, 6, 3, { life: 0.25, size: 0.06 });
+    sfx.immune(volumeAt(this.pos.distanceTo(ctx.player.pos)));
+  }
+
   /** Thrown into the air (by a geyser). It doesn't mind. */
   launch(speed: number) {
     this.vy = speed;
@@ -172,8 +179,20 @@ export class Dog {
     const canBreathe = player.level >= UNLOCK.dogFireBreath;
 
     // Join in on whatever angel you're fighting.
+    // Joins in on whatever you last hit, or any angel that's fighting near you.
     const wanted = player.lastTarget;
-    const pick = wanted && wanted.alive && player.sinceLastHit() < 12 && wanted.pos.distanceTo(player.pos) < 25 ? wanted : null;
+    let pick: Foe | null = wanted && wanted.alive && player.sinceLastHit() < 12 && wanted.pos.distanceTo(player.pos) < 25 ? wanted : null;
+    if (!pick) {
+      let best = 16;
+      for (const f of ctx.fighters) {
+        if (f.side !== 'heaven' || !f.alive || f.state !== 'alert') continue;
+        const d = f.pos.distanceTo(player.pos);
+        if (d < best) {
+          best = d;
+          pick = f;
+        }
+      }
+    }
     if (pick !== this.target) {
       if (pick && !this.target) sfx.bark(volumeAt(this.pos.distanceTo(player.pos)));
       this.target = pick;
@@ -191,8 +210,11 @@ export class Dog {
         // Trot along behind your left shoulder.
         const yaw = Math.atan2(player.pos.x - this.pos.x, player.pos.z - this.pos.z);
         const camYaw = ctx.player.facing;
-        const spotX = player.pos.x - Math.sin(camYaw) * 1.8 + Math.cos(camYaw) * 1.6;
-        const spotZ = player.pos.z - Math.cos(camYaw) * 1.8 - Math.sin(camYaw) * 1.6;
+        // While you sneak it creeps along right behind you.
+        const back = player.sneaking ? 1.3 : 1.8;
+        const side = player.sneaking ? 0.4 : 1.6;
+        const spotX = player.pos.x - Math.sin(camYaw) * back + Math.cos(camYaw) * side;
+        const spotZ = player.pos.z - Math.cos(camYaw) * back - Math.sin(camYaw) * side;
         const dx = spotX - this.pos.x;
         const dz = spotZ - this.pos.z;
         const d = Math.hypot(dx, dz);
@@ -340,7 +362,7 @@ export class Dog {
     this.animate(dt);
   }
 
-  private damage(target: Angel, amount: number, dir: THREE.Vector3, knockback: number, ctx: GameContext) {
+  private damage(target: Foe, amount: number, dir: THREE.Vector3, knockback: number, ctx: GameContext) {
     target.takeHit(amount, dir, knockback, ctx);
     ctx.floatText(new THREE.Vector3(target.pos.x, target.pos.y + 2.3, target.pos.z), String(Math.round(amount)), 'dog');
   }

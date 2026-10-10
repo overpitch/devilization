@@ -24,6 +24,10 @@
         <div class="bar xp"><div class="fill" id="xp-fill"></div></div>
         <div class="xp-text" id="xp-text"></div>
       </div>
+      <div class="top-center">
+        <div class="objective" id="objective"></div>
+        <div class="carrying hidden" id="carrying"></div>
+      </div>
       <div class="top-right">
         <div class="gold" id="gold"></div>
         <div class="kills" id="kills"></div>
@@ -42,7 +46,11 @@
           <div class="power-cooldown" id="power-spikes-cooldown"></div>
         </div>
       </div>
+      <div class="weapons" id="weapons"></div>
       <div class="crosshair"></div>
+      <div class="prompt hidden" id="prompt"></div>
+      <div class="sneak hidden" id="sneak">Sneaking</div>
+      <div class="marker hidden" id="marker"><span class="marker-icon">◆</span><span id="marker-dist"></span></div>
       <div id="bars"></div>
       <div id="floaters"></div>
       <div class="announce" id="announce">
@@ -58,7 +66,7 @@
     <!-- Title -->
     <div id="title-screen" class="overlay screen">
       <div class="embers" id="embers"></div>
-      <div class="version">Milestone 2 · All sound is generated live in your browser</div>
+      <div class="version">Milestone 3 · All sound is generated live in your browser</div>
       <div class="panel">
         <h1>DEVILIZATION</h1>
         <p class="subtitle">Rise from Imp to Demon Lord</p>
@@ -110,8 +118,10 @@
         <p class="subtitle">Your progress is saved</p>
         <div class="menu row">
           <button id="resume-btn">Resume</button>
+          <button id="lair-btn" class="secondary">Return to the lair</button>
           <button id="quit-btn" class="secondary">Quit to title</button>
         </div>
+        <p class="lair-reason" id="lair-reason"></p>
         <div class="options">
           <label class="option">
             <span>Look sensitivity</span>
@@ -138,11 +148,22 @@
       </div>
     </div>
 
+    <!-- Malphas -->
+    <div id="ruler-screen" class="overlay hidden">
+      <div class="panel ruler">
+        <h2>Malphas</h2>
+        <p class="subtitle">Ruler of the First Plane</p>
+        <p class="speech" id="ruler-speech"></p>
+        <div class="cards" id="ruler-cards"></div>
+        <button id="ruler-close-btn" class="secondary">Leave</button>
+      </div>
+    </div>
+
     <!-- Death -->
     <div id="death-screen" class="overlay hidden">
       <div class="panel">
         <h1 class="fallen">Banished to the pits</h1>
-        <p class="subtitle">You will claw your way back. You keep your gold and XP.</p>
+        <p class="subtitle">You will claw your way back to the lair. You keep your gold, XP and weapons, but your mission fails.</p>
         <button id="respawn-btn">Rise again</button>
       </div>
     </div>

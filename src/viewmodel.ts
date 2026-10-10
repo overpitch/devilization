@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp, smoothing } from './util';
+import { buildWeaponMesh, type WeaponId } from './weapons';
 
 /**
  * The demon's own arms and weapon, seen in first person. Drawn in its own
@@ -44,6 +45,65 @@ const SWINGS: Record<SwingKind, Key[]> = {
     { t: 0.85, ball: [-0.9, -0.3, -0.5], hand: [0.05, -0.36, -0.55] },
   ],
 };
+
+type Blade = Exclude<WeaponId, 'flail'>;
+type V3 = [number, number, number];
+/** A key pose for a held weapon: hand position, and the weapon's rotation (Euler YXZ; the blade points along +Z). */
+interface BladeKey {
+  t: number;
+  hand: V3;
+  rot: V3;
+}
+
+const PI = Math.PI;
+/** How each weapon is held at rest: up and forward, off to the right. */
+const BLADE_REST: Record<Blade, { hand: V3; rot: V3 }> = {
+  sword: { hand: [0.3, -0.36, -0.62], rot: [-0.55, PI - 0.2, 0] },
+  spear: { hand: [0.28, -0.36, -0.45], rot: [-0.12, PI - 0.06, 0] },
+  axe: { hand: [0.32, -0.42, -0.62], rot: [-0.5, PI - 0.25, 0] },
+};
+
+const BLADE_SWINGS: Record<string, BladeKey[]> = {
+  // Out to the right, then across to the left.
+  slashR: [
+    { t: 0.3, hand: [0.55, -0.12, -0.45], rot: [-0.5, PI - 1.3, -1.0] },
+    { t: 0.55, hand: [0.05, -0.22, -0.72], rot: [-0.6, PI - 0.25, -1.2] },
+    { t: 0.78, hand: [-0.42, -0.32, -0.55], rot: [-0.4, PI + 1.1, -1.4] },
+  ],
+  slashL: [
+    { t: 0.3, hand: [-0.3, -0.12, -0.5], rot: [-0.5, PI + 1.2, 1.0] },
+    { t: 0.55, hand: [0.08, -0.22, -0.72], rot: [-0.6, PI + 0.25, 1.2] },
+    { t: 0.78, hand: [0.5, -0.32, -0.55], rot: [-0.4, PI - 1.2, 1.4] },
+  ],
+  // Raised overhead, then brought straight down.
+  chop: [
+    { t: 0.3, hand: [0.2, 0.05, -0.45], rot: [-1.9, PI, 0] },
+    { t: 0.55, hand: [0.1, -0.25, -0.8], rot: [0.5, PI, 0] },
+    { t: 0.8, hand: [0.15, -0.4, -0.7], rot: [0.8, PI, 0] },
+  ],
+  thrust: [
+    { t: 0.3, hand: [0.3, -0.3, -0.22], rot: [-0.1, PI - 0.05, 0] },
+    { t: 0.48, hand: [0.1, -0.22, -1.15], rot: [-0.04, PI, 0] },
+    { t: 0.75, hand: [0.2, -0.3, -0.8], rot: [-0.1, PI - 0.03, 0] },
+  ],
+  spin: [
+    { t: 0.3, hand: [0.5, -0.2, -0.4], rot: [0, PI - 1.4, 0] },
+    { t: 0.55, hand: [0.05, -0.2, -0.7], rot: [0, PI, 0] },
+    { t: 0.8, hand: [-0.4, -0.25, -0.5], rot: [0, PI + 1.3, 0] },
+  ],
+  axeChop: [
+    { t: 0.35, hand: [0.25, 0.1, -0.4], rot: [-2.1, PI, 0] },
+    { t: 0.58, hand: [0.1, -0.3, -0.85], rot: [0.6, PI, 0] },
+    { t: 0.85, hand: [0.15, -0.45, -0.75], rot: [0.9, PI, 0] },
+  ],
+  axeCleave: [
+    { t: 0.35, hand: [0.6, -0.1, -0.4], rot: [-0.2, PI - 1.4, -1.5] },
+    { t: 0.55, hand: [0.0, -0.2, -0.8], rot: [-0.1, PI, -1.5] },
+    { t: 0.8, hand: [-0.5, -0.3, -0.55], rot: [0, PI + 1.3, -1.5] },
+  ],
+};
+
+const euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
@@ -98,6 +158,13 @@ export class ViewModel {
   private aim = 0;
   private readonly anchor = new THREE.Vector3();
   private readonly tip = new THREE.Vector3();
+  /** The flail's parts, hidden while another weapon is in hand. */
+  private readonly flailParts: THREE.Object3D[] = [];
+  private readonly held: Record<Blade, THREE.Group>;
+  private readonly bladeRot = new THREE.Vector3();
+  private readonly bladeStart = { hand: new THREE.Vector3(), rot: new THREE.Vector3() };
+  private lastBladeSwing: string | null = null;
+  private shown: WeaponId = 'flail';
 
   constructor() {
     const hemi = new THREE.HemisphereLight(0xd07050, 0x501408, 2.4);
@@ -177,6 +244,25 @@ export class ViewModel {
     }
     this.ball.scale.setScalar(0.8);
     this.rig.add(this.ball);
+    this.flailParts.push(this.handle, ...this.links, this.ball);
+
+    // Other weapons, held in the right fist.
+    this.held = { sword: buildWeaponMesh('sword'), spear: buildWeaponMesh('spear'), axe: buildWeaponMesh('axe') };
+    for (const g of Object.values(this.held)) {
+      g.visible = false;
+      this.rig.add(g);
+    }
+  }
+
+  /** Shows the right weapon in your hand. */
+  private show(id: WeaponId) {
+    if (id === this.shown) return;
+    this.shown = id;
+    for (const p of this.flailParts) p.visible = id === 'flail';
+    for (const [k, g] of Object.entries(this.held)) g.visible = k === id;
+    if (id === 'flail') this.settled = false;
+    else this.bladeRot.set(...BLADE_REST[id].rot);
+    this.lastBladeSwing = null;
   }
 
   /**
@@ -184,10 +270,19 @@ export class ViewModel {
    * its progress 0..1 (null when not attacking). `bob` and `phase` come
    * from walking; `lookDelta` is this frame's mouse movement.
    */
-  update(dt: number, camera: THREE.Camera, swing: { kind: SwingKind; t: number } | null, bob: number, phase: number, lookDelta: { x: number; y: number }) {
+  update(
+    dt: number,
+    camera: THREE.Camera,
+    weapon: WeaponId,
+    swingInfo: { anim: string; t: number } | null,
+    bob: number,
+    phase: number,
+    lookDelta: { x: number; y: number },
+  ) {
     this.rig.position.copy(camera.position);
     this.rig.quaternion.copy(camera.quaternion);
     this.rig.updateMatrixWorld();
+    this.show(weapon);
 
     // The arms lag a little behind fast turns.
     this.sway.x = clamp(this.sway.x * (1 - smoothing(10, dt)) - lookDelta.x * 0.0004, -0.08, 0.08);
@@ -195,6 +290,11 @@ export class ViewModel {
     const bobX = Math.sin(phase) * 0.025 * bob + this.sway.x;
     const bobY = -Math.abs(Math.cos(phase)) * 0.025 * bob + this.sway.y;
 
+    if (weapon !== 'flail') {
+      this.updateBlade(dt, weapon, swingInfo, bobX, bobY);
+      return;
+    }
+    const swing = swingInfo && (swingInfo.anim === 'smash' || swingInfo.anim === 'sweep') ? { kind: swingInfo.anim as SwingKind, t: swingInfo.t } : null;
     if (swing) {
       if (swing.kind !== this.lastSwing || swing.t < 0.02) {
         // A new swing starts from wherever the ball and hand are now.
@@ -234,6 +334,51 @@ export class ViewModel {
     this.ball.rotation.x += dt * (swing ? 14 : 1);
     this.ball.rotation.y += dt * (swing ? 9 : 0.6);
     this.drawChain(tip);
+  }
+
+  /** Sword, spear or axe: key poses for the hand and the weapon's angle. */
+  private updateBlade(dt: number, id: Blade, swing: { anim: string; t: number } | null, bobX: number, bobY: number) {
+    const rest = BLADE_REST[id];
+    const keys = swing ? BLADE_SWINGS[swing.anim] : undefined;
+    if (swing && keys) {
+      if (swing.anim !== this.lastBladeSwing || swing.t < 0.02) {
+        this.bladeStart.hand.copy(this.hand);
+        this.bladeStart.rot.copy(this.bladeRot);
+      }
+      this.lastBladeSwing = swing.anim;
+      const restHand = new THREE.Vector3(...rest.hand);
+      const restRot = new THREE.Vector3(...rest.rot);
+      const hands = [this.bladeStart.hand, ...keys.map((k) => new THREE.Vector3(...k.hand)), restHand];
+      const rots = [this.bladeStart.rot, ...keys.map((k) => new THREE.Vector3(...k.rot)), restRot];
+      const times = [0, ...keys.map((k) => k.t), 1];
+      let s = 0;
+      while (s < times.length - 2 && swing.t > times[s + 1]) s++;
+      const u = clamp((swing.t - times[s]) / (times[s + 1] - times[s]), 0, 1);
+      const at = <T>(pts: T[], i: number) => pts[clamp(i, 0, pts.length - 1)];
+      catmull(at(hands, s - 1), at(hands, s), at(hands, s + 1), at(hands, s + 2), u, this.hand);
+      catmull(at(rots, s - 1), at(rots, s), at(rots, s + 1), at(rots, s + 2), u, this.bladeRot);
+    } else {
+      this.lastBladeSwing = null;
+      this.hand.lerp(tmpA.set(...rest.hand), smoothing(10, dt));
+      this.bladeRot.lerp(tmpA.set(...rest.rot), smoothing(10, dt));
+    }
+
+    const hand = tmpB.copy(this.hand);
+    hand.x += bobX;
+    hand.y += bobY;
+    this.handR.position.copy(hand);
+    span(this.armR, SHOULDER_R, hand);
+    this.handR.quaternion.copy(this.armR.quaternion);
+    const g = this.held[id];
+    g.position.copy(hand);
+    g.quaternion.setFromEuler(euler.set(this.bladeRot.x, this.bladeRot.y, this.bladeRot.z));
+
+    const left = tmpC.copy(REST_LEFT);
+    left.x += bobX * 0.8;
+    left.y += bobY * 1.2 - (swing ? 0.12 : 0);
+    this.handL.position.copy(left);
+    span(this.armL, SHOULDER_L, left);
+    this.handL.quaternion.copy(this.armL.quaternion);
   }
 
   /** Follows the swing's key positions, remembering the speed for when it lets go. */

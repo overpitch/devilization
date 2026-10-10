@@ -1,3 +1,5 @@
+import { isWeapon, STARTING_WEAPON, type Weapon } from './weapons';
+
 /** The saved game, kept in this browser. */
 export interface SaveData {
   version: 1;
@@ -11,8 +13,19 @@ export interface SaveData {
   rank: number;
   /** Seconds of play so far. */
   playTime: number;
+  weapons: Weapon[];
+  equipped: number;
+  /** Main missions finished. */
+  missionsDone: string[];
+  sideDone: number;
+  chestOpened: boolean;
+  /** Has met Malphas. */
+  talked: boolean;
   savedAt: number;
 }
+
+/** Fields added after milestone 2, with their starting values. */
+const LATER_FIELDS = () => ({ weapons: [{ ...STARTING_WEAPON }], equipped: 0, missionsDone: [] as string[], sideDone: 0, chestOpened: false, talked: false });
 
 let key = 'devilization.save';
 
@@ -22,7 +35,7 @@ export function useTestSaveSlot() {
 }
 
 export function newSave(name: string, dogName: string): SaveData {
-  return { version: 1, name, dogName, level: 1, xp: 0, gold: 0, kills: 0, rank: 0, playTime: 0, savedAt: Date.now() };
+  return { version: 1, name, dogName, level: 1, xp: 0, gold: 0, kills: 0, rank: 0, playTime: 0, ...LATER_FIELDS(), savedAt: Date.now() };
 }
 
 export function loadSave(): SaveData | null {
@@ -39,7 +52,14 @@ export function loadSave(): SaveData | null {
       typeof d.gold === 'number' &&
       typeof d.kills === 'number' &&
       Number.isInteger(d.rank);
-    return valid ? ({ playTime: 0, ...d } as SaveData) : null;
+    if (!valid) return null;
+    // Older saves are missing newer fields; fill them in.
+    const save = { playTime: 0, ...LATER_FIELDS(), ...d } as SaveData;
+    save.weapons = Array.isArray(save.weapons) ? save.weapons.filter(isWeapon) : [];
+    if (save.weapons.length === 0) save.weapons = [{ ...STARTING_WEAPON }];
+    if (!(save.equipped >= 0 && save.equipped < save.weapons.length)) save.equipped = 0;
+    if (!Array.isArray(save.missionsDone)) save.missionsDone = [];
+    return save;
   } catch {
     return null;
   }

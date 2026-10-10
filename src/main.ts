@@ -1,10 +1,14 @@
 import './style.css';
 import * as THREE from 'three';
 import { Input } from './input';
-import { createWorld, lavaNearness, SPAWN, TRAINING } from './world';
+import { createWorld, lavaNearness, moveBody, SPAWN, TRAINING } from './world';
+import { THRONE } from './layout';
 import { Player } from './player';
 import { Dog } from './dog';
-import { Angel } from './angel';
+import { TrainingAngel } from './trainingAngel';
+import { Fighter, type FighterKind, type SpawnOptions } from './fighter';
+import { Campaign, type Interactable } from './campaign';
+import { Projectiles } from './projectiles';
 import { Geysers } from './geysers';
 import { FirstPersonCamera } from './camera';
 import { ViewModel } from './viewmodel';
@@ -16,8 +20,9 @@ import { loadSettings, saveSettings, type Settings } from './settings';
 import { Spikes } from './powers';
 import { Pickups } from './pickups';
 import { loadSave, newSave, useTestSaveSlot, writeSave, type SaveData } from './save';
-import { MAX_LEVEL, TRAINING_ANGEL_REWARD, unlocksAt, xpToNext } from './progression';
-import type { GameContext } from './types';
+import { MAX_LEVEL, RANKS, unlocksAt, xpToNext } from './progression';
+import { weaponName, type Weapon } from './weapons';
+import type { Foe, GameContext } from './types';
 
 const params = new URLSearchParams(location.search);
 // ?test skips the title and runs without pointer lock (for automated checks).
@@ -40,11 +45,12 @@ document.getElementById('app')!.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 220);
 const world = createWorld(scene);
-const debris = new Particles(scene, false, 500);
-const fire = new Particles(scene, true, 900);
+const debris = new Particles(scene, false, 600);
+const fire = new Particles(scene, true, 1000);
 const geysers = new Geysers(scene);
 const spikes = new Spikes(scene);
 const pickups = new Pickups(scene);
+const projectiles = new Projectiles(scene);
 // Lights up the world around you while you breathe fire.
 const breathLight = new THREE.PointLight(0xff7a2a, 0, 14, 1.6);
 scene.add(breathLight);
@@ -59,12 +65,17 @@ const floaters = new Floaters(hud.floaterLayer);
 player.ballAt = () => viewModel.ballWorld;
 player.onLand = (speed) => cam.addShake(Math.min(speed / 50, 0.3));
 
-// Three captured angels chained up on the training ground, facing where you arrive.
-const angels = [
+// Three captured angels standing dazed on the training ground, facing the lair.
+const trainingAngels = [
   [TRAINING.x - 4.5, TRAINING.z + 1],
   [TRAINING.x, TRAINING.z + 3],
   [TRAINING.x + 4.5, TRAINING.z + 1],
-].map(([x, z]) => new Angel(scene, x, z, Math.atan2(SPAWN.x - x, SPAWN.z - z), hud.barLayer));
+].map(([x, z]) => new TrainingAngel(scene, x, z, Math.atan2(SPAWN.x - x, SPAWN.z - z), hud.barLayer));
+
+/** Every fighter in the world: angels, the traitor, your imps. */
+const fighters: Fighter[] = [];
+/** Heaven's side, rebuilt each frame: what you can hit. */
+const foes: Foe[] = [];
 
 function applySettings(s: Settings) {
   cam.sensitivity = s.sensitivity;
@@ -93,32 +104,79 @@ const ctx: GameContext = {
   scene,
   player,
   dog,
-  angels,
+  foes,
+  fighters,
   debris,
   fire,
   geysers,
   spikes,
+  projectiles,
   floatText: (at, text, kind) => floaters.spawn(at, text, kind),
   addShake: (amount) => cam.addShake(amount),
   hitStop: (seconds) => {
     hitStopTimer = Math.max(hitStopTimer, seconds);
   },
-  onAngelKilled: (angel) => {
+  onFoeKilled: (foe) => {
     kills++;
-    const r = TRAINING_ANGEL_REWARD;
-    const chest = new THREE.Vector3(angel.pos.x, angel.pos.y + 1.4, angel.pos.z);
-    pickups.spawnGold(chest, r.goldMin + Math.floor(Math.random() * (r.goldMax - r.goldMin + 1)));
-    floaters.spawn(chest.clone().setY(chest.y + 1.2), `+${r.xp} XP`, 'xp');
-    awardXp(r.xp);
+    const r = (foe as Foe & { reward: { xp: number; gold: number; drop: Weapon | null } }).reward;
+    const chest = new THREE.Vector3(foe.pos.x, foe.pos.y + 1.4, foe.pos.z);
+    // Ten coins burst out, whatever they're worth together.
+    if (r.gold > 0) pickups.spawnGold(chest, 10, r.gold / 10);
+    if (r.xp > 0) {
+      floaters.spawn(chest.clone().setY(chest.y + 1.2), `+${r.xp} XP`, 'xp');
+      awardXp(r.xp);
+    }
+    if (r.drop) campaign.dropWeapon(r.drop, foe.pos);
   },
   toast: (text) => hud.toast(text),
 };
 
-pickups.onCollect = (at) => {
-  player.gold++;
+pickups.onCollect = (at, value) => {
+  player.gold += value;
   sfx.coin();
-  floaters.spawn(at.clone().setY(at.y + 0.6), '+1', 'gold');
+  floaters.spawn(at.clone().setY(at.y + 0.6), `+${value}`, 'gold');
 };
+
+player.onAssassinate = (foe) => {
+  floaters.spawn(new THREE.Vector3(foe.pos.x, foe.pos.y + 2.6, foe.pos.z), 'Silent kill', 'heavy');
+};
+
+function spawnFighter(kind: FighterKind, x: number, z: number, opts?: SpawnOptions) {
+  const f = new Fighter(scene, kind, x, z, hud.barLayer, opts);
+  fighters.push(f);
+  return f;
+}
+
+const campaign = new Campaign(scene, {
+  spawn: spawnFighter,
+  reward: (xp, gold) => {
+    player.gold += gold;
+    sfx.coin();
+    awardXp(xp);
+  },
+  announce: (title, detail) => hud.announce(title, detail),
+  toast: (text) => hud.toast(text),
+  promoted: (rank) => {
+    player.rank = rank;
+    sfx.unlock();
+    hud.announce(`Promoted: ${RANKS[rank]}`, 'Malphas has raised you up');
+    saveGame();
+  },
+  dropGold: (at, coins, each) => pickups.spawnGold(at, coins, each),
+  refreshDialog: () => {
+    if (hud.rulerOpen) hud.showRuler(campaign.dialog(player.level, player.rank));
+  },
+  save: () => saveGame(),
+});
+
+/** Picks up a weapon; with your hands full, the one you hold drops where you stand. */
+function takeWeapon(w: Weapon) {
+  const dropped = player.takeWeapon(w);
+  sfx.pickup();
+  hud.toast(dropped ? `Took ${weaponName(w)}, dropped ${weaponName(dropped)}` : `Took ${weaponName(w)}`);
+  if (dropped) campaign.dropWeapon(dropped, player.pos);
+  saveGame();
+}
 
 function awardXp(amount: number) {
   const before = player.level;
@@ -153,8 +211,20 @@ function saveGame() {
     kills,
     rank: player.rank,
     playTime: Math.round(playTime),
+    weapons: player.weapons,
+    equipped: player.equipped,
+    missionsDone: [...campaign.done],
+    sideDone: campaign.sideDone,
+    chestOpened: campaign.chestOpened,
+    talked: campaign.talked,
     savedAt: Date.now(),
   });
+}
+
+/** Removes every fighter from the world (a new game or a loaded save). */
+function clearFighters() {
+  for (const f of fighters) if (!f.gone) f.dispose();
+  fighters.length = 0;
 }
 
 /** Starts play from a save (or a fresh demon). */
@@ -165,9 +235,13 @@ function enterWorld(save: SaveData) {
     save.xp = 0;
   }
   player.loadHero(save.name, save.level, Math.min(save.xp, xpToNext(save.level)), save.gold, save.rank);
+  player.weapons = save.weapons.map((w) => ({ ...w }));
+  player.equipped = save.equipped;
   dog.name = save.dogName;
   kills = save.kills;
   playTime = save.playTime;
+  clearFighters();
+  campaign.load(save.missionsDone, save.sideDone, save.chestOpened, save.talked);
   phase = 'playing';
   hud.showScreen('none');
   spawn();
@@ -176,15 +250,16 @@ function enterWorld(save: SaveData) {
   saveGame();
 }
 
-/** Puts you (and your dog) back at the spawn point, facing the training ground. */
+/** Puts you (and your dog) at the foot of Malphas's throne. */
 function spawn() {
   player.reset(SPAWN.x, SPAWN.z);
-  cam.yaw = Math.atan2(TRAINING.x - SPAWN.x, TRAINING.z - SPAWN.z);
-  cam.pitch = -0.08;
+  cam.yaw = Math.atan2(THRONE.x - SPAWN.x, THRONE.z - SPAWN.z);
+  cam.pitch = 0.05;
   player.facing = cam.yaw;
   dog.reset(SPAWN.x, SPAWN.z, cam.yaw);
   viewModel.reset();
   player.stopPowers(ctx);
+  projectiles.clear();
   floaters.clear();
   hitStopTimer = 0;
   deathShown = false;
@@ -199,8 +274,20 @@ function lockPointer() {
   if (testMode) return;
   input.requestLock();
   setTimeout(() => {
-    if (phase === 'playing' && !input.locked && player.alive) hud.showPause(true);
+    if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen) hud.showPause(true);
   }, 1200);
+}
+
+function openRuler() {
+  player.stopPowers(ctx);
+  hud.showRuler(campaign.dialog(player.level, player.rank));
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+function closeRuler() {
+  hud.showRuler(null);
+  saveGame();
+  lockPointer();
 }
 
 hud.onContinue = () => {
@@ -229,23 +316,37 @@ hud.onQuit = () => {
   saveGame();
   phase = 'menu';
   player.stopPowers(ctx);
+  campaign.cancel();
   hud.showPause(false);
   hud.showDeath(false);
+  hud.showRuler(null);
   if (document.pointerLockElement) document.exitPointerLock();
   hud.fadeIn();
   hud.showTitle(loadSave());
+};
+hud.onReturnToLair = () => {
+  const can = campaign.canReturnToLair(ctx);
+  if (!can.ok) {
+    sfx.denied();
+    return;
+  }
+  hud.showPause(false);
+  spawn();
+  hud.toast('You return to the lair');
+  lockPointer();
 };
 hud.onRespawn = () => {
   spawn();
   lockPointer();
 };
+hud.onRulerClose = closeRuler;
 hud.onSettings = (s) => {
   applySettings(s);
   saveSettings(s);
 };
 input.onLockChange = (locked) => {
   if (locked) hud.showPause(false);
-  else if (phase === 'playing' && player.alive) {
+  else if (phase === 'playing' && player.alive && !hud.rulerOpen) {
     player.stopPowers(ctx);
     saveGame();
     hud.showPause(true);
@@ -254,7 +355,10 @@ input.onLockChange = (locked) => {
 window.addEventListener('beforeunload', saveGame);
 // Clicking the game while paused resumes it.
 renderer.domElement.addEventListener('click', () => {
-  if (phase === 'playing' && !input.locked && player.alive) lockPointer();
+  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen) lockPointer();
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && hud.rulerOpen) closeRuler();
 });
 
 window.addEventListener('resize', () => {
@@ -270,6 +374,7 @@ else hud.showTitle(loadSave());
 // ---------- Main loop ----------
 
 const eye = new THREE.Vector3();
+const lookDir = new THREE.Vector3();
 
 /** Behind the title: a slow circle around the training ground. */
 function updateTitleCamera(dt: number) {
@@ -279,9 +384,68 @@ function updateTitleCamera(dt: number) {
   camera.lookAt(TRAINING.x, 2, TRAINING.z);
 }
 
+interface Body {
+  pos: THREE.Vector3;
+  radius: number;
+  mass: number;
+}
+
+/** Keeps bodies from overlapping; heavier bodies get pushed less. */
+function separateBodies() {
+  const bodies: Body[] = [
+    { pos: player.pos, radius: player.radius, mass: 3 },
+    { pos: dog.pos, radius: dog.radius, mass: 3 },
+  ];
+  for (const f of fighters) {
+    if (f.alive && f.pos.distanceToSquared(player.pos) < 60 * 60) bodies.push({ pos: f.pos, radius: f.radius, mass: f.radius > 0.5 ? 2 : 1 });
+  }
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const a = bodies[i];
+      const b = bodies[j];
+      const dx = b.pos.x - a.pos.x;
+      const dz = b.pos.z - a.pos.z;
+      const min = a.radius + b.radius;
+      const d = Math.hypot(dx, dz);
+      if (d >= min || d < 1e-6 || Math.abs(a.pos.y - b.pos.y) > 1.5) continue;
+      const overlap = (min - d) / d;
+      const aShare = b.mass / (a.mass + b.mass);
+      moveBody(a.pos, -dx * overlap * aShare, -dz * overlap * aShare, a.radius * 0.8, 1.05);
+      moveBody(b.pos, dx * overlap * (1 - aShare), dz * overlap * (1 - aShare), b.radius * 0.8, 1.05);
+    }
+  }
+}
+
+/** The closest thing you can use with E that you're facing. */
+function nearestInteractable(): Interactable | null {
+  let best: Interactable | null = null;
+  let bestScore = Infinity;
+  cam.lookDir(lookDir);
+  for (const i of campaign.interactables(ctx, takeWeapon)) {
+    const dx = i.pos.x - player.pos.x;
+    const dz = i.pos.z - player.pos.z;
+    const d = Math.hypot(dx, dz);
+    // Must be about level with it: no opening the chest from the foot of its pillar.
+    if (d > i.range || i.pos.y - player.pos.y > 1.8 || player.pos.y - i.pos.y > 2.5) continue;
+    // Roughly in front of you (or right at your feet).
+    const facing = (dx * lookDir.x + dz * lookDir.z) / (d || 1);
+    if (d > 1.2 && facing < 0.5) continue;
+    const score = d - facing;
+    if (score < bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return best;
+}
+
 /** Advances the game by one frame of `realDt` seconds. */
 function tick(realDt: number) {
-  const playing = phase === 'playing' && (input.locked || testMode);
+  const playing = phase === 'playing' && (input.locked || testMode) && !hud.rulerOpen;
+  foes.length = 0;
+  for (const a of trainingAngels) foes.push(a);
+  for (const f of fighters) if (f.side === 'heaven') foes.push(f);
+
   if (playing) {
     playTime += realDt;
     saveTimer += realDt;
@@ -298,26 +462,43 @@ function tick(realDt: number) {
     }
     player.update(dt, ctx, input, cam);
     dog.update(dt, ctx);
-    for (const a of angels) a.update(dt, ctx);
+    for (const a of trainingAngels) a.update(dt, ctx);
+    for (const f of fighters) f.update(dt, ctx);
+    separateBodies();
+    campaign.update(dt, ctx);
+    projectiles.update(dt, ctx);
     geysers.update(dt, ctx);
     spikes.update(dt, ctx);
     pickups.update(dt, player.pos);
     debris.update(dt);
     fire.update(dt);
+
+    // Use things with E; a silent kill takes over the prompt when you can make one.
+    if (player.alive) {
+      const target = nearestInteractable();
+      if (player.assassinTarget) hud.setPrompt('Kill silently', true);
+      else hud.setPrompt(target?.label ?? null);
+      if (target && input.interactPressed) {
+        if (campaign.isRuler(target)) openRuler();
+        else target.act();
+      }
+    } else hud.setPrompt(null);
   } else if (phase === 'menu') {
     // The world stays alive behind the title.
-    for (const a of angels) a.update(realDt, ctx);
+    for (const a of trainingAngels) a.update(realDt, ctx);
     geysers.update(realDt, ctx);
     fire.update(realDt);
     debris.update(realDt);
   }
+  // Fighters that have faded away leave the world.
+  for (let i = fighters.length - 1; i >= 0; i--) if (fighters[i].gone) fighters.splice(i, 1);
 
   if (phase === 'menu') {
     updateTitleCamera(realDt);
   } else {
     cam.update(realDt, player.eye(eye), player.bob, player.walkPhase, player.sprinting);
     camera.updateMatrixWorld();
-    viewModel.update(playing ? realDt : 0, camera, player.swingInfo, player.bob, player.walkPhase, { x: input.mouseDX, y: input.mouseDY });
+    viewModel.update(playing ? realDt : 0, camera, player.weaponId, player.swingInfo, player.bob, player.walkPhase, { x: input.mouseDX, y: input.mouseDY });
   }
   floaters.update(realDt, camera);
   // The breath lights the ground in front of you, flickering.
@@ -330,14 +511,27 @@ function tick(realDt: number) {
 
   if (!player.alive && player.deadTime > 1.6 && !deathShown) {
     deathShown = true;
+    campaign.onPlayerDeath();
     if (document.pointerLockElement) document.exitPointerLock();
     hud.showPause(false);
     hud.showDeath(true);
+    saveGame();
   }
 
   world.update(realDt, phase === 'menu' ? camera.position : player.pos);
   setAmbience(phase === 'menu' ? 0.3 : 1 - lavaNearness(player.pos.x, player.pos.z) / 4);
-  for (const a of angels) a.updateBar(camera);
+  for (const a of trainingAngels) a.updateBar(camera);
+  for (const f of fighters) f.updateBar(camera, player.pos);
+  if (phase === 'playing') {
+    const o = campaign.objective(player.level);
+    hud.setObjective(o.text, o.at, camera, player.pos);
+    hud.setWeapons(player.weapons, player.equipped);
+    hud.setCarrying(campaign.carrying);
+    if (hud.pauseOpen) {
+      const can = campaign.canReturnToLair(ctx);
+      hud.setLairButton(can.ok, can.reason);
+    }
+  }
   hud.update(realDt, player, dog.name, kills);
   input.endFrame();
 }
@@ -372,7 +566,7 @@ function frame(now: number) {
   if (statsEl) {
     statFrames++;
     if (now - statSince > 500) {
-      statsEl.textContent = `${((statFrames * 1000) / (now - statSince)).toFixed(0)} fps · ${renderer.info.render.calls} draws · ${renderer.info.render.triangles} tris`;
+      statsEl.textContent = `${((statFrames * 1000) / (now - statSince)).toFixed(0)} fps · ${renderer.info.render.calls} draws · ${renderer.info.render.triangles} tris · ${fighters.length} fighters`;
       statFrames = 0;
       statSince = now;
     }
@@ -387,10 +581,18 @@ Object.assign(window, {
   __game: {
     player,
     dog,
-    angels,
+    trainingAngels,
+    fighters,
+    campaign,
     geysers,
     spikes,
     pickups,
+    projectiles,
+    spawnFighter,
+    takeWeapon,
+    openRuler,
+    closeRuler,
+    hud,
     /** Jump to a level (for testing powers). */
     setLevel(level: number) {
       player.loadHero(player.name, level, 0, player.gold, player.rank);

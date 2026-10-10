@@ -34,7 +34,7 @@ export function breatheFire(origin: THREE.Vector3, dir: THREE.Vector3, b: Breath
     ctx.fire.burst(origin, color, 1, speed * Math.tan(b.halfAngle) * 0.8, { push: flamePush, gravity: -4, life: 0.42, size: 0.26, spread: 0.08 });
   }
   const cos = Math.cos(b.halfAngle);
-  for (const a of ctx.angels) {
+  for (const a of ctx.foes) {
     if (!a.alive) continue;
     toTarget.set(a.pos.x - origin.x, a.pos.y + 1.2 - origin.y, a.pos.z - origin.z);
     const d = toTarget.length();
@@ -189,7 +189,7 @@ export class Spikes {
     p.set(c.x, y + 0.3, c.z);
     ctx.debris.burst(p, 0x3a2a26, 25, 6, { size: 0.16, spread: 1 });
     ctx.fire.burst(p, 0xff6a1a, 15, 5, { life: 0.4, size: 0.1, spread: 1 });
-    for (const a of ctx.angels) {
+    for (const a of ctx.foes) {
       if (!a.alive) continue;
       if (Math.hypot(a.pos.x - c.x, a.pos.z - c.z) > SPIKE_RADIUS + a.radius) continue;
       if (Math.abs(a.pos.y - y) > 2.5) continue;

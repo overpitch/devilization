@@ -3,7 +3,7 @@ import { createHumanoid, setFlash, type Humanoid } from './character';
 import { addCollider, groundAt } from './world';
 import { sfx, volumeAt } from './audio';
 import { clamp } from './util';
-import type { GameContext } from './types';
+import type { Foe, GameContext } from './types';
 
 const MAX_HP = 70;
 const RESPAWN_TIME = 5;
@@ -37,18 +37,19 @@ function addWings(h: Humanoid) {
       m.castShadow = true;
       wing.add(m);
     }
-    // Captured: the wings droop.
-    wing.rotation.set(0.2, -0.5 * side, -0.55 * side);
+    // Dazed: the wings hang folded.
+    wing.rotation.set(0.15, -0.25 * side, -0.7 * side);
     wings.push(wing);
   }
   return wings;
 }
 
 /**
- * A captured angel chained to a post on the training ground. It doesn't
- * fight back; destroyed angels return a few seconds later.
+ * A captured angel standing dazed on the training ground: arms limp, head
+ * bowed. It doesn't fight back or react; destroyed angels return a few
+ * seconds later.
  */
-export class Angel {
+export class TrainingAngel implements Foe {
   readonly pos = new THREE.Vector3();
   readonly radius = 0.45;
   hp = MAX_HP;
@@ -58,7 +59,6 @@ export class Angel {
   private readonly h: Humanoid;
   /** Leans the whole body when hit; its own yaw stays fixed. */
   private readonly tilt = new THREE.Group();
-  private readonly wings: THREE.Group[];
   private readonly halo: THREE.Mesh;
   private readonly lean = new THREE.Vector2();
   private readonly leanVel = new THREE.Vector2();
@@ -66,7 +66,6 @@ export class Angel {
   private deadTime = 0;
   private readonly bar: HTMLDivElement;
   private readonly barFill: HTMLDivElement;
-  private sinceHit = 99;
   private burnTime = 0;
   private burnDps = 0;
   /** Burn damage not yet shown as a number. */
@@ -84,37 +83,15 @@ export class Angel {
     this.tilt.position.copy(this.pos);
     this.tilt.add(this.h.root);
     scene.add(this.tilt);
-    this.wings = addWings(this.h);
+    addWings(this.h);
 
     this.halo = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.035, 4, 12), new THREE.MeshBasicMaterial({ color: 0xffe27a }));
     this.halo.rotation.x = Math.PI / 2;
     this.halo.position.y = 0.62;
     this.h.head.add(this.halo);
 
-    // The post behind the angel, with a crossbar the chains hang from.
-    const bx = x - Math.sin(facing) * 0.7;
-    const bz = z - Math.cos(facing) * 0.7;
-    const post = new THREE.Group();
-    post.position.set(bx, this.pos.y, bz);
-    post.rotation.y = facing;
-    const obsidian = lambert(0x241a32);
-    const iron = lambert(0x2a2a30);
-    const part = (mat: THREE.Material, w: number, hh: number, d: number, px: number, py: number, pz: number) => {
-      const m = new THREE.Mesh(box, mat);
-      m.scale.set(w, hh, d);
-      m.position.set(px, py, pz);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      post.add(m);
-    };
-    part(obsidian, 0.35, 3, 0.35, 0, 1.5, 0);
-    part(obsidian, 1.6, 0.3, 0.3, 0, 2.7, 0);
-    // Chains from the crossbar ends down to the angel's wrists.
-    for (const side of [1, -1]) {
-      for (let i = 0; i < 5; i++) part(iron, i % 2 ? 0.04 : 0.08, 0.16, i % 2 ? 0.08 : 0.04, 0.72 * side - 0.05 * i * side, 2.5 - i * 0.15, 0.1 + i * 0.07);
-    }
-    scene.add(post);
-    addCollider({ x: bx, z: bz, r: 0.3 });
+    // Solid, so you can't walk through it.
+    addCollider({ x, z, r: 0.35 });
 
     this.bar = document.createElement('div');
     this.bar.className = 'enemy-bar';
@@ -127,7 +104,6 @@ export class Angel {
   takeHit(damage: number, dir: THREE.Vector3, knockback: number, ctx: GameContext) {
     if (!this.alive) return;
     this.flash = 1;
-    this.sinceHit = 0;
     // Chained up, so a hit only rocks the body back.
     this.leanVel.x += dir.x * (2 + knockback);
     this.leanVel.y += dir.z * (2 + knockback);
@@ -152,13 +128,22 @@ export class Angel {
     if (!this.alive) return;
     this.impaled = seconds;
     this.flash = 1;
-    this.sinceHit = 0;
     const chest = this.chest();
     ctx.floatText(chest.clone().setY(chest.y + 1), String(Math.round(damage)), 'heavy');
     ctx.fire.burst(chest, 0xffe27a, 20, 5, { life: 0.5, size: 0.08 });
     ctx.debris.burst(chest, 0xf4f0e6, 15, 4, { gravity: 3, life: 1.5, size: 0.1 });
     this.damage(damage, ctx, false);
   }
+
+  /** Chained up facing you: it always sees you coming. */
+  canAssassinate() {
+    return false;
+  }
+
+  assassinate() {}
+
+  /** Every angel is worth 10 gold; training angels give only a little XP. */
+  readonly reward = { xp: 10, gold: 10, drop: null };
 
   private chest() {
     return new THREE.Vector3(this.pos.x, this.pos.y + 1.3, this.pos.z);
@@ -188,7 +173,7 @@ export class Angel {
     ctx.fire.burst(chest, 0xffd04a, 25, 7, { life: 0.6, size: 0.08 });
     ctx.debris.burst(chest, 0xf4f0e6, 30, 5, { gravity: 2, life: 2, size: 0.1 });
     ctx.addShake(0.15);
-    ctx.onAngelKilled(this);
+    ctx.onFoeKilled(this);
   }
 
   private flushBurnNumber(ctx: GameContext) {
@@ -202,7 +187,6 @@ export class Angel {
   }
 
   update(dt: number, ctx: GameContext) {
-    this.sinceHit += dt;
     const root = this.h.root;
     if (!this.alive) {
       this.deadTime += dt;
@@ -244,20 +228,15 @@ export class Angel {
     this.lean.y = clamp(this.lean.y + this.leanVel.y * dt, -0.6, 0.6);
     this.tilt.rotation.set(this.lean.y * 0.6, 0, -this.lean.x * 0.6);
 
-    // Struggling against the chains.
-    // Thrashes harder while burning or impaled.
-    this.struggle += dt * (this.impaled > 0 || this.burnTime > 0 ? 3 : 1);
+    // Dazed and unresponsive: arms limp, head bowed, only slow breathing.
+    this.struggle += dt;
     const t = this.struggle;
     const h = this.h;
-    h.armL.rotation.set(-3.25 + Math.sin(t * 2.3) * 0.12, 0, 0.5 + Math.sin(t * 3.1) * 0.08);
-    h.armR.rotation.set(-3.25 + Math.sin(t * 2.7 + 1) * 0.12, 0, -0.5 - Math.sin(t * 2.9) * 0.08);
-    h.head.rotation.set(0.25 + Math.sin(t * 0.7) * 0.1, Math.sin(t * 0.5) * 0.4, 0);
-    h.torso.rotation.x = Math.sin(t * 1.9) * 0.04;
-    for (const [i, w] of this.wings.entries()) {
-      const side = i === 0 ? 1 : -1;
-      w.rotation.y = (-0.5 + Math.sin(t * 4 + i) * 0.06 + (this.sinceHit < 0.6 ? Math.sin(t * 30) * 0.2 : 0)) * side;
-    }
-    this.halo.position.y = 0.62 + Math.sin(t * 2) * 0.03;
+    h.armL.rotation.set(0.05, 0, 0.06);
+    h.armR.rotation.set(0.05, 0, -0.06);
+    h.head.rotation.set(0.45, 0.15, 0);
+    h.torso.rotation.x = 0.12 + Math.sin(t * 1.1) * 0.015;
+    this.halo.position.y = 0.6;
 
     this.flash = Math.max(0, this.flash - dt * 5);
     // A faint holy glow, flaring white when hit.

@@ -378,6 +378,149 @@ export const sfx = {
     }
   },
 
+  /** An angel notices you: a sharp rising chime. */
+  alert(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'triangle', 880, 1760, t, 0.18).connect(envelope(a, t, 0.18 * vol, 0.005, 0.25));
+    tone(a, 'sine', 1320, 1320, t + 0.08, 0.3).connect(envelope(a, t + 0.08, 0.1 * vol, 0.005, 0.3));
+  },
+
+  /** An angel's sword whooshing down. */
+  angelSwing(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    const f = filter(a, 'bandpass', 900, 1.5);
+    f.frequency.setValueAtTime(600, t);
+    f.frequency.exponentialRampToValueAtTime(2600, t + 0.15);
+    noiseSource(a, t, 0.2).connect(f).connect(envelope(a, t, 0.3 * vol, 0.06, 0.14));
+  },
+
+  bowShot(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'triangle', 220, 110, t, 0.12).connect(envelope(a, t, 0.25 * vol, 0.002, 0.12));
+    noiseSource(a, t, 0.25).connect(filter(a, 'highpass', 3000)).connect(envelope(a, t, 0.12 * vol, 0.01, 0.22));
+  },
+
+  /** Holy light striking something. */
+  holyImpact(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'sine', 1200, 600, t, 0.2).connect(envelope(a, t, 0.15 * vol, 0.003, 0.2));
+    noiseSource(a, t, 0.1).connect(filter(a, 'highpass', 4000)).connect(envelope(a, t, 0.15 * vol, 0.002, 0.08));
+  },
+
+  /** A priest's spell launching. */
+  cast(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'sine', 400, 1200, t, 0.35).connect(envelope(a, t, 0.16 * vol, 0.02, 0.35));
+  },
+
+  /** A priest's healing: a warm major chord. */
+  heal(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    for (const f of [523.3, 659.3, 784]) tone(a, 'sine', f, f, t, 0.9).connect(envelope(a, t, 0.08 * vol, 0.1, 0.8));
+  },
+
+  impHurt(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'sawtooth', 380, 240, t, 0.15).connect(filter(a, 'bandpass', 900, 3)).connect(envelope(a, t, 0.2 * vol, 0.005, 0.15));
+  },
+
+  impDie(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'sawtooth', 420, 120, t, 0.6).connect(filter(a, 'bandpass', 800, 3)).connect(envelope(a, t, 0.25 * vol, 0.01, 0.6));
+  },
+
+  /** A silent kill: a wet crunch and a low hiss. */
+  assassinate() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    tone(a, 'sine', 90, 40, t, 0.3).connect(envelope(a, t, 0.7, 0.003, 0.3));
+    noiseSource(a, t, 0.25).connect(filter(a, 'bandpass', 1400, 2)).connect(envelope(a, t, 0.35, 0.003, 0.22));
+    noiseSource(a, t + 0.1, 0.8).connect(filter(a, 'highpass', 2500)).connect(envelope(a, t + 0.1, 0.12, 0.1, 0.7));
+  },
+
+  /** Picking up a weapon or an item. */
+  pickup() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    tone(a, 'square', 300, 300, t, 0.06).connect(filter(a, 'lowpass', 1500)).connect(envelope(a, t, 0.12, 0.002, 0.06));
+    tone(a, 'square', 450, 450, t + 0.07, 0.1).connect(filter(a, 'lowpass', 1500)).connect(envelope(a, t + 0.07, 0.12, 0.002, 0.1));
+  },
+
+  chestOpen() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    // A creaking lid, then a shower of coins.
+    tone(a, 'sawtooth', 90, 140, t, 0.5).connect(filter(a, 'bandpass', 500, 6)).connect(envelope(a, t, 0.2, 0.1, 0.4));
+    for (let i = 0; i < 8; i++) {
+      const s = t + 0.45 + i * 0.05;
+      const f = 1500 + Math.random() * 800;
+      tone(a, 'square', f, f, s, 0.06).connect(filter(a, 'lowpass', 4000)).connect(envelope(a, s, 0.05, 0.002, 0.08));
+    }
+  },
+
+  /** Heaven's war horn: an attack wave is coming. */
+  warHorn() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    for (const f of [392, 587.3]) {
+      const o = tone(a, 'sawtooth', f * 0.9, f, t, 1.5);
+      o.connect(filter(a, 'lowpass', 1600, 1)).connect(envelope(a, t, 0.13, 0.25, 1.2));
+    }
+  },
+
+  /** A mission objective done: a rising, menacing fanfare. */
+  missionDone() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    [146.8, 220, 293.7].forEach((f, i) => {
+      const s = t + i * 0.18;
+      tone(a, 'sawtooth', f, f, s, 0.8).connect(filter(a, 'lowpass', 1200)).connect(envelope(a, s, 0.15, 0.02, i === 2 ? 1.2 : 0.4));
+    });
+  },
+
+  /** Malphas speaking: a deep, rumbling growl. */
+  rulerVoice() {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    const voice = tone(a, 'sawtooth', 52, 44, t, 1.4);
+    const f = filter(a, 'bandpass', 260, 5);
+    f.frequency.setValueAtTime(220, t);
+    f.frequency.linearRampToValueAtTime(420, t + 0.3);
+    f.frequency.linearRampToValueAtTime(240, t + 0.9);
+    f.frequency.linearRampToValueAtTime(380, t + 1.3);
+    voice.connect(f).connect(envelope(a, t, 0.55, 0.08, 1.3));
+  },
+
+  /** A blow glancing off your invulnerable dog. */
+  immune(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    tone(a, 'triangle', 1700, 1500, t, 0.15).connect(envelope(a, t, 0.06 * vol, 0.002, 0.15));
+  },
+
   click() {
     const a = ready();
     if (!a) return;

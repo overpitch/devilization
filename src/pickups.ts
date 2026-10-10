@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { heightAt } from './world';
 
-const MAX = 120;
+const MAX = 200;
 /** Coins this close fly to you. */
 const MAGNET = 5;
 const COLLECT = 0.9;
@@ -14,6 +14,8 @@ interface Coin {
   age: number;
   active: boolean;
   spin: number;
+  /** Gold this coin is worth. */
+  value: number;
 }
 
 /** Gold coins that burst out of fallen angels, bounce, and fly to you when you come near. */
@@ -29,7 +31,7 @@ export class Pickups {
   private readonly zero = new THREE.Matrix4().makeScale(0, 0, 0);
 
   /** Called once per coin picked up. */
-  onCollect?: (at: THREE.Vector3) => void;
+  onCollect?: (at: THREE.Vector3, value: number) => void;
 
   constructor(scene: THREE.Scene) {
     // Thick little square coins: blocky gold.
@@ -41,13 +43,14 @@ export class Pickups {
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = true;
     for (let i = 0; i < MAX; i++) {
-      this.coins.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), age: 0, active: false, spin: 0 });
+      this.coins.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), age: 0, active: false, spin: 0, value: 1 });
       this.mesh.setMatrixAt(i, this.zero);
     }
     scene.add(this.mesh);
   }
 
-  spawnGold(at: THREE.Vector3, count: number) {
+  /** Bursts `count` coins out of a point, each worth `value` gold. */
+  spawnGold(at: THREE.Vector3, count: number, value = 1) {
     for (let n = 0; n < count; n++) {
       const c = this.coins[this.next];
       this.next = (this.next + 1) % MAX;
@@ -58,6 +61,7 @@ export class Pickups {
       c.age = 0;
       c.active = true;
       c.spin = Math.random() * 6;
+      c.value = value;
     }
   }
 
@@ -79,7 +83,7 @@ export class Pickups {
         if (d < COLLECT) {
           c.active = false;
           this.mesh.setMatrixAt(i, this.zero);
-          this.onCollect?.(c.pos);
+          this.onCollect?.(c.pos, c.value);
           continue;
         }
       } else {

@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clamp, mulberry32 } from './util';
+import { FLAT_ZONES, LAIR, TREASURE, TREASURE_GEYSER } from './layout';
+
+export { SPAWN, TRAINING } from './layout';
 
 /**
  * The first plane of hell: a blocky plain cut by rivers of lava, ringed by
@@ -17,9 +20,6 @@ const BED = -1;
 /** Height reported outside the world: an impassable wall. */
 const OUTSIDE = 60;
 
-export const SPAWN = { x: 0.5, z: -9.5 };
-/** The training ground with the chained angels, just ahead of the spawn point. */
-export const TRAINING = { x: 0.5, z: 3 };
 
 /** Solid circle (tree trunk, post). */
 export interface Circle {
@@ -170,7 +170,8 @@ const MESAS: [number, number, number, number][] = [
 
 /** Fire geysers: vent positions. */
 export const GEYSERS: { x: number; z: number }[] = [
-  { x: 12.5, z: -15.5 },
+  { x: 14.5, z: -42.5 },
+  TREASURE_GEYSER,
   { x: -15.5, z: -22.5 },
   { x: 21.5, z: 9.5 },
   { x: -21.5, z: 11.5 },
@@ -182,8 +183,17 @@ export const GEYSERS: { x: number; z: number }[] = [
   { x: 8.5, z: -48.5 },
 ];
 
-/** Kept flat and clear: the spawn point and training ground. */
-const FLAT = { x: 0.5, z: -3, r: 13 };
+/** How far inside the flattened zones a point is (0 outside, 1 well inside). */
+function flatness(x: number, z: number) {
+  let f = 0;
+  for (const [fx, fz, r] of FLAT_ZONES) f = Math.max(f, smoothstep(r + 7, r, Math.hypot(x - fx, z - fz)));
+  return f;
+}
+
+/** True within `margin` meters of a flattened zone (camps, the lair). */
+function nearFlat(x: number, z: number, margin: number) {
+  return FLAT_ZONES.some(([fx, fz, r]) => Math.hypot(x - fx, z - fz) < r + margin);
+}
 
 function riverDistance(x: number, z: number): { d: number; half: number; bridge: boolean } {
   let best = { d: Infinity, half: 0, bridge: false };
@@ -199,6 +209,50 @@ function riverDistance(x: number, z: number): { d: number; half: number; bridge:
     if (d < best.d - best.half) best = { d: Math.max(d, 0), half: Math.max(-d, 0.01), bridge: false };
   }
   return best;
+}
+
+/** Sets a rectangle of columns (inclusive cell coordinates) to a height and kind. */
+function fill(x0: number, z0: number, x1: number, z1: number, h: number, kind: Kind) {
+  for (let z = z0; z <= z1; z++) {
+    for (let x = x0; x <= x1; x++) {
+      const c = cell(x + HALF, z + HALF);
+      heights[c] = h;
+      kinds[c] = kind;
+    }
+  }
+}
+
+/**
+ * Malphas's lair: a raised basalt dais with a step up at the front, walled in
+ * obsidian at the back and sides, with tall pillars at the front corners.
+ */
+function buildLair() {
+  const x0 = Math.floor(LAIR.x - LAIR.halfWidth);
+  const x1 = Math.floor(LAIR.x + LAIR.halfWidth);
+  const front = Math.floor(LAIR.z + LAIR.depth / 2); // the step row
+  const back = front - LAIR.depth;
+  fill(x0, back, x1, front - 1, 3, Kind.Basalt);
+  fill(x0, front, x1, front, 2, Kind.Basalt);
+  fill(x0 - 1, back - 1, x1 + 1, back - 1, 8, Kind.Obsidian);
+  fill(x0 - 1, back, x0 - 1, front - 2, 6, Kind.Obsidian);
+  fill(x1 + 1, back, x1 + 1, front - 2, 6, Kind.Obsidian);
+  for (const x of [x0, x1]) fill(x, front - 1, x, front - 1, 9, Kind.Obsidian);
+}
+
+/** The treasure pillar: three blocks taller than anything around it, right beside a geyser. */
+function buildTreasurePillar() {
+  const tx = Math.floor(TREASURE.x);
+  const tz = Math.floor(TREASURE.z);
+  const base = heights[cell(Math.floor(TREASURE_GEYSER.x) + HALF, Math.floor(TREASURE_GEYSER.z) + HALF)];
+  // Keep the ground around it low, so nobody can jump up from a rock.
+  for (let z = tz - 2; z <= tz + 2; z++) {
+    for (let x = tx - 2; x <= tx + 2; x++) {
+      const c = cell(x + HALF, z + HALF);
+      if (Math.abs(x + 0.5 - TREASURE_GEYSER.x) <= 1 && Math.abs(z + 0.5 - TREASURE_GEYSER.z) <= 1) continue;
+      heights[c] = Math.min(heights[c], base + 1);
+    }
+  }
+  fill(tx - 1, tz - 1, tx + 1, tz + 1, base + 3, Kind.Obsidian);
 }
 
 function generateTerrain() {
@@ -227,7 +281,7 @@ function generateTerrain() {
         kind = Kind.Cliff;
       }
 
-      const flat = smoothstep(FLAT.r + 7, FLAT.r, Math.hypot(x - FLAT.x, z - FLAT.z));
+      const flat = flatness(x, z);
       h = h * (1 - flat) + 1 * flat;
       h = Math.max(0, Math.round(h));
 
@@ -275,8 +329,9 @@ function generateTerrain() {
 
   // Obsidian spires and basalt boulders scattered over the plain.
   const clearOf = (x: number, z: number, r: number) => {
-    if (Math.hypot(x - FLAT.x, z - FLAT.z) < FLAT.r + 4) return false;
+    if (nearFlat(x, z, 4)) return false;
     if (GEYSERS.some((g) => Math.hypot(x - g.x, z - g.z) < 5)) return false;
+    if (Math.hypot(x - TREASURE.x, z - TREASURE.z) < 6) return false;
     const river = riverDistance(x, z);
     if (river.d < river.half + 3 + r) return false;
     return Math.max(Math.abs(x), Math.abs(z)) < HALF - 14;
@@ -305,6 +360,9 @@ function generateTerrain() {
       kinds[c] = Kind.Basalt;
     }
   }
+
+  buildLair();
+  buildTreasurePillar();
 
   // How far each cell is from lava (up to 4 cells), for the glow on nearby rock.
   lavaDist.fill(4);
@@ -544,7 +602,7 @@ function addScenery(scene: THREE.Scene, rand: () => number) {
   const trunks: number[][] = [];
   const bones: number[][] = [];
   const open = (x: number, z: number) => {
-    if (isLava(x, z) || Math.hypot(x - FLAT.x, z - FLAT.z) < FLAT.r + 2) return false;
+    if (isLava(x, z) || nearFlat(x, z, 2) || Math.hypot(x - TREASURE.x, z - TREASURE.z) < 4) return false;
     if (GEYSERS.some((g) => Math.hypot(x - g.x, z - g.z) < 3)) return false;
     const h = heightAt(x, z);
     // Only on level ground.
@@ -692,6 +750,25 @@ export function createWorld(scene: THREE.Scene) {
       sun.target.position.copy(center);
     },
   };
+}
+
+/**
+ * A random spot on open, dry ground at least `minDist` from (fromX, fromZ):
+ * for side missions. Returns null if none was found.
+ */
+export function findOpenSpot(fromX: number, fromZ: number, minDist: number): { x: number; z: number } | null {
+  for (let tries = 0; tries < 200; tries++) {
+    const x = Math.floor((Math.random() * 2 - 1) * (HALF - 16)) + 0.5;
+    const z = Math.floor((Math.random() * 2 - 1) * (HALF - 16)) + 0.5;
+    if (Math.hypot(x - fromX, z - fromZ) < minDist) continue;
+    if (nearFlat(x, z, 3) || lavaNearness(x, z) < 4) continue;
+    const h = heightAt(x, z);
+    // Fairly level: no big drops within a few meters.
+    let level = true;
+    for (const [a, b] of [[3, 0], [-3, 0], [0, 3], [0, -3]]) if (Math.abs(heightAt(x + a, z + b) - h) > 1) level = false;
+    if (level) return { x, z };
+  }
+  return null;
 }
 
 /** Distance from a point to the nearest lava cell (in whole cells, 0..4). */

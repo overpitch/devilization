@@ -23,8 +23,9 @@ interface Geyser {
   phase: Phase;
   timer: number;
   column: THREE.Group;
-  /** Who this eruption has already hit. */
+  /** Who this eruption has already burned, and thrown into the air. */
   hit: Set<object>;
+  thrown: Set<object>;
 }
 
 const columnMats = [0xff4a0a, 0xff8a1a, 0xffd04a].map(
@@ -51,7 +52,7 @@ export class Geysers {
       });
       column.visible = false;
       scene.add(column);
-      this.items.push({ x: g.x, z: g.z, y: heightAt(g.x, g.z), phase: 'idle', timer: 1 + Math.random() * 8, column, hit: new Set() });
+      this.items.push({ x: g.x, z: g.z, y: heightAt(g.x, g.z), phase: 'idle', timer: 1 + Math.random() * 8, column, hit: new Set(), thrown: new Set() });
     }
   }
 
@@ -78,6 +79,7 @@ export class Geysers {
           g.phase = 'erupt';
           g.timer = ERUPT_TIME;
           g.hit.clear();
+          g.thrown.clear();
           g.column.visible = true;
           sfx.geyser(volumeAt(dist));
           if (dist < 12) ctx.addShake(0.35 * (1 - dist / 12));
@@ -120,10 +122,17 @@ export class Geysers {
       g.hit.add(dog);
       dog.launch(LAUNCH_SPEED);
     }
-    for (const a of ctx.angels) {
+    for (const a of ctx.foes) {
       if (a.alive && !g.hit.has(a) && inColumn(a.pos)) {
         g.hit.add(a);
         a.takeHit(ANGEL_DAMAGE, new THREE.Vector3(0, 1, 0), 0, ctx);
+      }
+    }
+    // Everyone on foot gets thrown up; only angels get burned.
+    for (const f of ctx.fighters) {
+      if (f.alive && !g.thrown.has(f) && inColumn(f.pos)) {
+        g.thrown.add(f);
+        f.launch(LAUNCH_SPEED * 0.8);
       }
     }
   }

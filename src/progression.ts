@@ -34,9 +34,6 @@ export const UNLOCK = {
   naturalArmor: 50,
 } as const;
 
-/** What a training angel is worth. Real angels (milestone 3) will be worth far more. */
-export const TRAINING_ANGEL_REWARD = { xp: 10, goldMin: 2, goldMax: 4 };
-
 /** The messages shown when a level unlocks something. */
 export function unlocksAt(level: number, dogName: string): { title: string; detail: string }[] {
   const out: { title: string; detail: string }[] = [];

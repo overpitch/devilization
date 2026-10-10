@@ -17,6 +17,8 @@ A first-person action game that runs in the web browser. You are a low-ranking d
 | Goal | Reach level 50, descend to the 10th plane, and defeat the angel general. That makes you Demon Lord. |
 | After the ending | The game continues with endless generated missions. |
 | Death | Respawn at the current plane's hub. The current mission fails. You keep your gold, XP and items. |
+| Travel home | From the pause menu, return to the current plane's lair at any time, unless a mission is running or something is fighting you. |
+| Gold from angels | Every angel drops 10 gold. |
 | Hazards | You're a hell demon: lava and fire can't hurt you (or your dog). Lava is thick, so wading through it is slow, and geysers throw you into the air. Only the angels' attacks do damage. |
 | Travel | Go back to any unlocked plane at any time. |
 | Save | Saved in the browser, so you can close the tab and come back later. |
@@ -153,7 +155,7 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 
 1. ✅ **Core feel:** first-person camera, plane 1 terrain (lava rivers, fire geysers), spiked-flail combat against chained training angels, and the dog following and attacking (bite and horn charge).
 2. ✅ **Hero and HUD:** name entry (demon and dog), health, hellfire, XP, gold, leveling, saving, fire breath and ground spikes; the dog's horn charge (level 5) and fire breath (level 10).
-3. **First plane playable:** angel types, hub and ruler, the three mission types, weapon drops, treasure chest, death and respawn, saving.
+3. ✅ **First plane playable:** angel types (footsoldier, archer, priest, captain), Malphas's lair, three main missions (one of each type) and repeatable side missions, imp allies, stealth and silent kills, weapon drops (sword, spear, axe), the treasure chest on the geyser pillar, death and respawn, saving, and returning to the lair from the pause menu.
 4. **Armory and gear:** weaponsmith, armorer, weapon variety, enchantments.
 5. **Planes 2–9:** themes, ranks, travel between planes, size change and flight, size puzzles.
 6. **Plane 10 and the ending:** the general, Demon Lord ending, endless missions.
@@ -162,7 +164,9 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 ## Open questions (defaults are used until decided)
 
 - Names: the demon's boss on each plane, the angel general, and rank titles (above are placeholders).
-- XP and gold numbers: training angels give 10 XP and 2–4 gold; the full climb to level 50 takes about 61,000 XP. These will be balanced once missions exist.
+- XP numbers: training angels give 10 XP, real angels 15–60, Vargash 100, main missions 150, side missions 40 + 8 per level; the full climb to level 50 takes about 61,000 XP. Needs balancing across all ten planes.
+- Names: Malphas (ruler of the First Plane), Vargash the Traitor, angel captains (Auriel and others) are placeholders.
+- Seraphs (flying angels) and knights are planned for deeper planes.
 - Do demon troops fight alongside you outside war-front missions? (default: no; just you and the dog)
 - Should geysers launch you into the air? (default: yes, with no damage; they can carry you up onto high ledges)
 - Should lava slow you down? (default: yes, to about half speed)

@@ -1,6 +1,7 @@
 /** Keys the browser should never act on while playing (e.g. Space scrolling the page). */
 const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyF', 'KeyR', 'KeyC', 'KeyJ', 'KeyM', 'KeyZ', 'KeyX',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyF', 'KeyR', 'KeyC', 'KeyJ', 'KeyM', 'KeyZ', 'KeyX', 'KeyQ',
+  'Digit1', 'Digit2', 'Digit3', 'Digit4',
   'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
 ]);
 
@@ -87,6 +88,24 @@ export class Input {
 
   get spikesHeld() {
     return this.isDown('KeyR');
+  }
+
+  get sneakHeld() {
+    return this.isDown('KeyC');
+  }
+
+  get interactPressed() {
+    return this.pressed.has('KeyE');
+  }
+
+  /** Number keys 1-4 pick a weapon (0-based), or null. */
+  get weaponPressed(): number | null {
+    for (let i = 0; i < 4; i++) if (this.pressed.has(`Digit${i + 1}`)) return i;
+    return null;
+  }
+
+  get cyclePressed() {
+    return this.pressed.has('KeyQ');
   }
 
   get sprintHeld() {
