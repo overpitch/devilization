@@ -4,6 +4,7 @@ import { addCollider, groundAt } from './world';
 import { sfx, volumeAt } from './audio';
 import { clamp } from './util';
 import type { Foe, GameContext } from './types';
+import { viewport } from './viewport';
 
 const MAX_HP = 70;
 const RESPAWN_TIME = 5;
@@ -275,7 +276,7 @@ export class TrainingAngel implements Foe {
       return;
     }
     this.bar.style.display = '';
-    this.bar.style.transform = `translate(${(p.x * 0.5 + 0.5) * window.innerWidth}px, ${(-p.y * 0.5 + 0.5) * window.innerHeight}px) translate(-50%, -50%)`;
+    this.bar.style.transform = `translate(${(p.x * 0.5 + 0.5) * viewport.w}px, ${(-p.y * 0.5 + 0.5) * viewport.h}px) translate(-50%, -50%)`;
     this.barFill.style.width = `${(this.hp / this.maxHp) * 100}%`;
   }
 }

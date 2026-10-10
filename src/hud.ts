@@ -7,6 +7,7 @@ import { armorName, WEAPON_ENCHANTS, weaponName, type Armor, type Weapon } from 
 import type { ArmoryRow, ArmoryTab } from './armory';
 import type { Dialog } from './campaign';
 import * as THREE from 'three';
+import { viewport } from './viewport';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -60,6 +61,10 @@ const pick = (list: string[], not: string) => {
   return options[Math.floor(Math.random() * options.length)];
 };
 
+/** A random name for Player 2's demon and dog (different from Player 1's). */
+export const randomDemonName = (not: string) => pick(DEMON_NAMES, not);
+export const randomDogName = (not: string) => pick(DOG_NAMES, not);
+
 /** Escapes a player-chosen name for use inside HTML. */
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -76,6 +81,8 @@ export class Hud {
   onRespawn?: () => void;
   onSettings?: (s: Settings) => void;
   onReturnToLair?: () => void;
+  /** Pause > Add Player 2 / Remove Player 2. */
+  onTogglePlayer2?: () => void;
   onArmoryOpen?: () => void;
   onKeepPlaying?: () => void;
   onEndingTitle?: () => void;
@@ -143,6 +150,7 @@ export class Hud {
     click('quit-btn', () => this.onQuit?.());
     click('respawn-btn', () => this.onRespawn?.());
     click('lair-btn', () => this.onReturnToLair?.());
+    click('p2-btn', () => this.onTogglePlayer2?.());
     click('armory-btn', () => this.onArmoryOpen?.());
     click('keep-playing-btn', () => this.onKeepPlaying?.());
     click('ending-title-btn', () => this.onEndingTitle?.());
@@ -265,6 +273,19 @@ export class Hud {
   }
 
   /** The pause menu's "Return to the lair" button: allowed, or why not. */
+  /** The pause menu's split-screen button. */
+  setPlayer2(joined: boolean) {
+    $('p2-btn').textContent = joined ? 'Remove Player 2' : 'Add Player 2';
+  }
+
+  /** "Rising again in 5…" while you're down and your partner fights on (null hides it). */
+  setDown(text: string | null) {
+    this.set('down', text ?? '', (v) => {
+      $('down').classList.toggle('hidden', !v);
+      $('down').textContent = v;
+    });
+  }
+
   setLairButton(ok: boolean, reason: string) {
     ($('lair-btn') as HTMLButtonElement).disabled = !ok;
     $('lair-reason').textContent = ok ? 'Teleport back to Malphas' : reason;
@@ -316,8 +337,8 @@ export class Hud {
     }
     this.marker.classList.remove('hidden');
     const p = this.projected.copy(at).project(camera);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = viewport.w;
+    const h = viewport.h;
     let x = (p.x * 0.5 + 0.5) * w;
     let y = (-p.y * 0.5 + 0.5) * h;
     if (p.z > 1) {

@@ -51,7 +51,25 @@ In menus, the D-pad or left stick moves the highlight, A presses and B goes back
 
 **On Xbox:** open the game in Microsoft Edge, then hold the ☰ Menu button for a second to switch the controller from moving a cursor to game controls. The game starts on Low graphics there, and B won't take you off the page.
 
+## Two players
+
+Two people can play together on one screen, side by side. Player 2 needs a controller.
+
+- **If Player 1 is on a controller:** Player 2 presses **A** on a second controller at any time.
+- **If Player 1 is on keyboard and mouse:** pause, choose **Add Player 2**, then Player 2 presses **A**.
+
+Player 2 arrives at your side as a demon of their own (purple, so you can tell each other apart) with their own hellhound. You share levels, XP, gold and missions; Player 2 starts with a copy of your gear and picks up weapons for themselves. If one of you falls, they claw back out of the pits beside the other after 8 seconds; if you both fall, you're banished to the lair as usual. Pause and choose **Remove Player 2** to go back to one player.
+
 ## What's in so far
+
+### Phase 9
+
+- **Split-screen co-op:** a second demon on a second controller, with the screen split down the middle. Each player has their own view, arms, weapon, health, hellfire, prompts and damage numbers; the objective, gold and announcements are shared.
+- Each player sees the other's demon (horns, tail, weapon, wings in flight, size) and dog.
+- Angels watch for, chase and attack whichever demon is nearest; geysers throw both of you; coins fly to whoever is closer; either of you can talk to rulers, loot chests and use the Hellgate.
+- Shared levels: XP from either player levels you both up.
+- Falling in co-op: back on your feet beside your partner after 8 seconds, unless you both go down.
+- Join with A on a second controller (or Pause → Add Player 2); leave with Pause → Remove Player 2.
 
 ### Phase 8
 
@@ -148,6 +166,7 @@ In menus, the D-pad or left stick moves the highlight, A presses and B goes back
 - **`?xbox`** behaves as if on an Xbox (controller tip, Low graphics, no pointer lock).
 - **`?level=15`** starts you at level 15, to try out the powers. This changes your saved game.
 - **`__game.setLevel(n)`** in the console jumps to a level.
+- **`__game.joinPlayer2(padIndex)`** / **`__game.leavePlayer2()`** start and end split screen.
 - In the browser console, `__game` exposes the player, dog, angels, geysers and camera:
   - `__game.step(seconds)` advances the game at a fixed 60 fps, even in a background tab.
   - `__game.frozen = true` stops the loop, so `__game.look([x, y, z], [x, y, z])` can show the world from any point.
@@ -182,4 +201,7 @@ In menus, the D-pad or left stick moves the highlight, A presses and B goes back
 | `src/hud.ts` | Status bars, power slots, and the title, naming, intro, pause and death screens |
 | `src/input.ts` | Keyboard, pointer-lock mouse and controllers |
 | `src/menuNav.ts` | Driving the menus with a controller |
+| `src/avatar.ts` | A demon's body as the other player sees it in split screen |
+| `src/hud2.ts` | Player 2's half of the screen |
+| `src/viewport.ts` | The size of Player 1's view (half the window in split screen) |
 | `src/settings.ts` | Saved options |

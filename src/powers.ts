@@ -85,8 +85,9 @@ export class Spikes {
   private readonly mesh: THREE.InstancedMesh;
   private readonly casts: Cast[] = [];
   private nextSlot = 0;
-  readonly marker = new THREE.Group();
-  private readonly markerMat: THREE.MeshBasicMaterial;
+  /** One aiming marker per player. */
+  private readonly markers: THREE.Group[] = [];
+  private readonly markerMats: THREE.MeshBasicMaterial[] = [];
   private time = 0;
 
   constructor(scene: THREE.Scene) {
@@ -99,9 +100,11 @@ export class Spikes {
     scene.add(this.mesh);
 
     // A square of glowing red on the ground, the size of the strike.
-    this.markerMat = new THREE.MeshBasicMaterial({ color: 0xff3010, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
     const side = SPIKE_RADIUS * 2;
     const box = new THREE.BoxGeometry(1, 1, 1);
+    for (let k = 0; k < 2; k++) {
+    const markerMat = new THREE.MeshBasicMaterial({ color: 0xff3010, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
+    const marker = new THREE.Group();
     for (const [w, d, x, z] of [
       [side, 0.12, 0, SPIKE_RADIUS],
       [side, 0.12, 0, -SPIKE_RADIUS],
@@ -109,22 +112,26 @@ export class Spikes {
       [0.12, side, -SPIKE_RADIUS, 0],
       [0.5, 0.5, 0, 0],
     ]) {
-      const edge = new THREE.Mesh(box, this.markerMat);
+      const edge = new THREE.Mesh(box, markerMat);
       edge.scale.set(w, 0.06, d);
       edge.position.set(x, 0.05, z);
-      this.marker.add(edge);
+      marker.add(edge);
     }
-    this.marker.visible = false;
-    scene.add(this.marker);
+    marker.visible = false;
+    scene.add(marker);
+    this.markers.push(marker);
+    this.markerMats.push(markerMat);
+    }
   }
 
   /** Shows the aiming marker at a point (null hides it); grey when you can't cast yet. */
-  aim(at: THREE.Vector3 | null, ready: boolean) {
-    this.marker.visible = at !== null;
+  aim(at: THREE.Vector3 | null, ready: boolean, slot = 0) {
+    const marker = this.markers[slot];
+    marker.visible = at !== null;
     if (!at) return;
-    this.marker.position.set(at.x, heightAt(at.x, at.z), at.z);
-    this.markerMat.color.set(ready ? 0xff3010 : 0x605858);
-    this.markerMat.opacity = 0.55 + Math.sin(this.time * 10) * 0.25;
+    marker.position.set(at.x, heightAt(at.x, at.z), at.z);
+    this.markerMats[slot].color.set(ready ? 0xff3010 : 0x605858);
+    this.markerMats[slot].opacity = 0.55 + Math.sin(this.time * 10) * 0.25;
   }
 
   cast(at: THREE.Vector3, damage: number, ctx: GameContext) {

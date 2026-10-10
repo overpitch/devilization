@@ -44,8 +44,13 @@ export interface HellBody {
 /** Shared game state handed to every entity's update. */
 export interface GameContext {
   scene: THREE.Scene;
+  /** Player 1 (sounds are heard from here). */
   player: Player;
   dog: Dog;
+  /** Every demon in play: Player 1, and Player 2 in split screen. */
+  players: Player[];
+  /** Every player's dog. */
+  dogs: Dog[];
   /** Everything on heaven's side that's still in the world (alive or dying). */
   foes: Foe[];
   /** Every moving fighter: angels, traitors and your imps. */

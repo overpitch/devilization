@@ -5,6 +5,7 @@ import { groundAt, heightAt, isLava, LAVA_Y, moveBody } from './world';
 import { sfx, volumeAt } from './audio';
 import { dampAngle, wrapAngle } from './util';
 import type { Foe, GameContext, HellBody } from './types';
+import { viewport } from './viewport';
 
 /**
  * Everyone who fights on foot: heaven's angels (and the demons who sold out
@@ -168,6 +169,8 @@ export class Fighter implements Foe, HellBody {
   assassinated = false;
   /** 0..1: how sure it is that it saw you. */
   suspicion = 0;
+  /** The demon it's most suspicious of. */
+  private noticed: { readonly pos: THREE.Vector3 } = { pos: new THREE.Vector3() };
   readonly label: string | null;
 
   private readonly h: Humanoid;
@@ -517,23 +520,30 @@ export class Fighter implements Foe, HellBody {
 
   /** Angels on guard watch for you. Sneaking (C) makes you much harder to spot. */
   private perceive(dt: number, ctx: GameContext) {
-    const p = ctx.player;
-    if (!p.alive) {
-      this.suspicion = Math.max(0, this.suspicion - dt * 0.3);
-      return;
+    // Whichever demon it can see best raises its suspicion.
+    let gain = 0;
+    let p = ctx.player;
+    for (const q of ctx.players) {
+      if (!q.alive) continue;
+      const dx = q.pos.x - this.pos.x;
+      const dz = q.pos.z - this.pos.z;
+      const dist = Math.hypot(dx, dz);
+      const range = this.def.sight * (q.sneaking ? 0.4 : 1) * q.visibility;
+      const near = (q.sneaking ? 1.4 : 3.5) * (q.size === -1 ? 0.5 : 1);
+      let seen = false;
+      if (dist < near) seen = true;
+      else if (dist < range && Math.abs(wrapAngle(Math.atan2(dx, dz) - this.yaw)) < 1.05 && this.lineOfSight(q.pos)) seen = true;
+      const g = seen ? (0.5 + 2.5 * Math.max(0, 1 - dist / range)) * (q.sneaking ? 0.5 : 1.4) : 0;
+      if (g > gain) {
+        gain = g;
+        p = q;
+      }
     }
-    const dx = p.pos.x - this.pos.x;
-    const dz = p.pos.z - this.pos.z;
-    const dist = Math.hypot(dx, dz);
-    const range = this.def.sight * (p.sneaking ? 0.4 : 1) * p.visibility;
-    const near = (p.sneaking ? 1.4 : 3.5) * (p.size === -1 ? 0.5 : 1);
-    let seen = false;
-    if (dist < near) seen = true;
-    else if (dist < range && Math.abs(wrapAngle(Math.atan2(dx, dz) - this.yaw)) < 1.05 && this.lineOfSight(p.pos)) seen = true;
-    if (seen) {
-      this.suspicion += dt * (0.5 + 2.5 * (1 - dist / range)) * (p.sneaking ? 0.5 : 1.4);
+    this.noticed = p;
+    if (gain > 0) {
+      this.suspicion += dt * gain;
     } else {
-      this.suspicion = Math.max(0, this.suspicion - dt * 0.15);
+      this.suspicion = Math.max(0, this.suspicion - dt * (ctx.players.some((q) => q.alive) ? 0.15 : 0.3));
     }
     // Imps charging in are hard to miss.
     for (const f of ctx.fighters) {
@@ -559,8 +569,8 @@ export class Fighter implements Foe, HellBody {
     };
     if (this.side === 'heaven') {
       // Prefers you over your dog and imps when you're about as close.
-      consider(ctx.player, 3);
-      consider(ctx.dog);
+      for (const p of ctx.players) consider(p, 3);
+      for (const d of ctx.dogs) consider(d);
       for (const f of ctx.fighters) if (f.side === 'hell') consider(f);
       return bestD < 30 ? best : null;
     }
@@ -590,7 +600,7 @@ export class Fighter implements Foe, HellBody {
     } else if (this.side === 'heaven' && this.state === 'guard') {
       if (!this.def.boss) this.perceive(dt, ctx);
       // Turns toward something it half-noticed.
-      if (this.suspicion > 0.3) faceYaw = Math.atan2(ctx.player.pos.x - this.pos.x, ctx.player.pos.z - this.pos.z);
+      if (this.suspicion > 0.3) faceYaw = Math.atan2(this.noticed.pos.x - this.pos.x, this.noticed.pos.z - this.pos.z);
       else if (this.patrol) {
         const to = this.patrol[this.patrolIndex];
         const dx = to.x - this.pos.x;
@@ -781,7 +791,7 @@ export class Fighter implements Foe, HellBody {
     ctx.debris.burst(at, 0x8a7a68, 30, 7, { size: 0.2, spread: 1 });
     sfx.spikes(volumeAt(this.pos.distanceTo(ctx.player.pos)));
     ctx.addShake(Math.max(0, 0.7 - this.pos.distanceTo(ctx.player.pos) * 0.04));
-    const victims: HellBody[] = [ctx.player, ctx.dog];
+    const victims: HellBody[] = [...ctx.players, ...ctx.dogs];
     for (const f of ctx.fighters) if (f.side === 'hell' && f.alive) victims.push(f);
     for (const v of victims) {
       if (!v.alive) continue;
@@ -1063,8 +1073,8 @@ export class Fighter implements Foe, HellBody {
     const showBar = this.alive && near && (this.hp < this.maxHp || this.label !== null);
     const head = new THREE.Vector3(this.pos.x, this.pos.y + 2.5 * this.def.scale, this.pos.z).project(camera);
     const onScreen = head.z < 1;
-    const x = (head.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-head.y * 0.5 + 0.5) * window.innerHeight;
+    const x = (head.x * 0.5 + 0.5) * viewport.w;
+    const y = (-head.y * 0.5 + 0.5) * viewport.h;
     if (showBar && onScreen) {
       this.bar.style.display = '';
       this.bar.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;

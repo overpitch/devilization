@@ -163,7 +163,7 @@ With a controller (standard layout, including Edge on Xbox): left stick moves, r
 6. ✅ **Planes 6–9, size and flight:** four more planes (chain canyons, frozen hell, burning sky, the Abyss), changing size at level 30, flight at level 40, and puzzles that need you tiny or huge.
 7. ✅ **Plane 10 and the ending:** the war camp fortress, the general (summons 10 angels at half health), the Demon Lord ending, and endless missions (side missions on every plane, including Heaven's Counterattack).
 8. ✅ **Controllers and Xbox:** play with a controller, including Microsoft Edge on Xbox: game controls, menus driven by the controller, lower graphics on Xbox, and Back that doesn't leave the game.
-9. **Two-player split screen:** a second demon (with its own dog) on a controller, sharing the screen side by side.
+9. ✅ **Two-player split screen:** a second demon (with its own dog) on a controller, sharing the screen side by side.
 10. **Polish:** music, sound, balancing, title screen.
 
 ## Open questions (defaults are used until decided)

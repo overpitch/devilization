@@ -114,14 +114,17 @@ export class Geysers {
   /** Throws demons standing in the column of fire into the air, and burns angels. */
   private blast(g: Geyser, top: number, ctx: GameContext) {
     const inColumn = (p: THREE.Vector3) => Math.hypot(p.x - g.x, p.z - g.z) < BLAST_RADIUS && p.y < top && p.y > g.y - 1;
-    const { player, dog } = ctx;
-    if (player.alive && !g.hit.has(player) && inColumn(player.pos)) {
-      g.hit.add(player);
-      player.launch(LAUNCH_SPEED, ctx);
+    for (const player of ctx.players) {
+      if (player.alive && !g.hit.has(player) && inColumn(player.pos)) {
+        g.hit.add(player);
+        player.launch(LAUNCH_SPEED, ctx);
+      }
     }
-    if (!g.hit.has(dog) && inColumn(dog.pos)) {
-      g.hit.add(dog);
-      dog.launch(LAUNCH_SPEED);
+    for (const dog of ctx.dogs) {
+      if (!g.hit.has(dog) && inColumn(dog.pos)) {
+        g.hit.add(dog);
+        dog.launch(LAUNCH_SPEED);
+      }
     }
     for (const a of ctx.foes) {
       if (a.alive && !g.hit.has(a) && inColumn(a.pos)) {

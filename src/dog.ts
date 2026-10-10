@@ -72,6 +72,9 @@ export class Dog implements HellBody {
   private time = 0;
   private sizzle = 0;
 
+  /** Whose dog it is (Player 1's when not set). */
+  owner: import('./player').Player | null = null;
+
   constructor(scene: THREE.Scene) {
     const hide = lambert(0x3a1410);
     const belly = lambert(0x5a1e14);
@@ -139,6 +142,11 @@ export class Dog implements HellBody {
   }
 
   /** Puts the dog at your heel. */
+  /** Hidden while its demon isn't in play (Player 2's dog in one-player). */
+  set visible(v: boolean) {
+    this.root.visible = v;
+  }
+
   reset(x: number, z: number, yaw: number) {
     this.pos.set(x - Math.sin(yaw) * 2 + Math.cos(yaw) * 1.5, 0, z - Math.cos(yaw) * 2 - Math.sin(yaw) * 1.5);
     this.pos.y = groundAt(this.pos.x, this.pos.z, 0.3);
@@ -172,7 +180,7 @@ export class Dog implements HellBody {
     this.biteCooldown -= dt;
     this.chargeCooldown -= dt;
     this.breathCooldown -= dt;
-    const player = ctx.player;
+    const player = this.owner ?? ctx.player;
     // The dog grows with you: it hits as hard as you do, and learns new attacks at your levels.
     const mult = player.damageMult;
     const canCharge = player.level >= UNLOCK.dogCharge;
@@ -209,7 +217,7 @@ export class Dog implements HellBody {
       case 'follow': {
         // Trot along behind your left shoulder.
         const yaw = Math.atan2(player.pos.x - this.pos.x, player.pos.z - this.pos.z);
-        const camYaw = ctx.player.facing;
+        const camYaw = player.facing;
         // While you sneak it creeps along right behind you.
         const back = player.sneaking ? 1.3 : 1.8;
         const side = player.sneaking ? 0.4 : 1.6;

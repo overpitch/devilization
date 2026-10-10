@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { viewport } from './viewport';
 
 export type FloaterKind = 'damage' | 'heavy' | 'dog' | 'burn' | 'xp' | 'gold' | 'heal';
 
@@ -19,7 +20,11 @@ export class Floaters {
   private next = 0;
   private readonly projected = new THREE.Vector3();
 
-  constructor(container: HTMLElement) {
+  /** `size`: the view the numbers are placed in. */
+  constructor(
+    container: HTMLElement,
+    private readonly size: { w: number; h: number } = viewport,
+  ) {
     for (let i = 0; i < POOL_SIZE; i++) {
       const el = document.createElement('div');
       el.className = 'floater';
@@ -44,8 +49,8 @@ export class Floaters {
   }
 
   update(dt: number, camera: THREE.Camera) {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = this.size.w;
+    const h = this.size.h;
     for (const f of this.pool) {
       if (!f.active) continue;
       f.age += dt;

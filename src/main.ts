@@ -1,6 +1,6 @@
 import './style.css';
 import * as THREE from 'three';
-import { Input } from './input';
+import { Input, PAD } from './input';
 import { createWorld, heightAt, isLava, lavaNearness, moveBody, SPAWN, TRAINING, type World } from './world';
 import { THRONE } from './layout';
 import { plane, setPlane } from './planes';
@@ -19,6 +19,10 @@ import { Floaters } from './floaters';
 import { initAudio, setAmbience, setBreathing, setVolume, sfx } from './audio';
 import { IS_XBOX, loadSettings, saveSettings, type Settings } from './settings';
 import { MenuNavigator } from './menuNav';
+import { Avatar } from './avatar';
+import { PlayerTwoHud } from './hud2';
+import { viewport } from './viewport';
+import { randomDemonName, randomDogName } from './hud';
 import { Spikes } from './powers';
 import { Pickups } from './pickups';
 import { loadSave, newSave, useTestSaveSlot, writeSave, type SaveData } from './save';
@@ -40,6 +44,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'hi
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+// Drawn once a frame in render(), even with two views.
+renderer.shadowMap.autoUpdate = false;
 // The arms and weapon are drawn in a second pass on top of the world.
 renderer.autoClear = false;
 renderer.info.autoReset = false;
@@ -63,12 +69,38 @@ const input = new Input(renderer.domElement);
 const menuNav = new MenuNavigator();
 const hud = new Hud(settings);
 const floaters = new Floaters(hud.floaterLayer);
+
+// ----- Player 2 (split screen), idle until a second controller joins -----
+const camera2 = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 220);
+const cam2 = new FirstPersonCamera(camera2);
+// Each camera sees the other player's demon, never its own body.
+camera.layers.enable(2);
+camera2.layers.enable(1);
+const player2 = new Player();
+player2.slot = 1;
+const dog2 = new Dog(scene);
+dog2.owner = player2;
+dog2.visible = false;
+const viewModel2 = new ViewModel();
+const input2 = new Input(renderer.domElement, false);
+const avatars = [new Avatar(scene, 0), new Avatar(scene, 1)];
+const hud2 = new PlayerTwoHud();
+const floaters2 = new Floaters(hud2.floaterLayer, hud2.size);
+let twoPlayer = false;
+/** "Add Player 2" was chosen: the next controller to press A joins. */
+let waitingForP2 = false;
+/** Seconds a fallen demon waits before rising beside the other one. */
+const REVIVE_TIME = 8;
+player2.ballAt = () => viewModel2.ballWorld;
+player2.onLand = (speed) => cam2.addShake(Math.min(speed / 50, 0.3));
+player2.onHurt = () => input2.rumble(0.7, 180);
 const armory = new Armory();
 let armoryTab: ArmoryTab = 'weapons';
 
 player.ballAt = () => viewModel.ballWorld;
 player.onLand = (speed) => cam.addShake(Math.min(speed / 50, 0.3));
 player.onHurt = () => input.rumble(0.7, 180);
+
 
 /** What you've achieved across every plane. */
 const progress: Progress = { done: new Set(), chests: new Set(), talked: new Set(), sideDone: 0 };
@@ -113,6 +145,8 @@ const ctx: GameContext = {
   scene,
   player,
   dog,
+  players: [player],
+  dogs: [dog],
   foes,
   fighters,
   debris,
@@ -120,10 +154,17 @@ const ctx: GameContext = {
   geysers: null as unknown as Geysers, // set when a plane is built
   spikes,
   projectiles,
-  floatText: (at, text, kind) => floaters.spawn(at, text, kind),
-  addShake: (amount) => cam.addShake(amount),
+  floatText: (at, text, kind) => {
+    floaters.spawn(at, text, kind);
+    if (twoPlayer) floaters2.spawn(at, text, kind);
+  },
+  addShake: (amount) => {
+    cam.addShake(amount);
+    if (twoPlayer) cam2.addShake(amount);
+  },
   hitStop: (seconds) => {
     input.rumble(seconds > 0.08 ? 0.5 : 0.3, 90);
+    if (twoPlayer) input2.rumble(seconds > 0.08 ? 0.5 : 0.3, 90);
     hitStopTimer = Math.max(hitStopTimer, seconds);
   },
   onFoeKilled: (foe) => {
@@ -148,8 +189,8 @@ pickups.onCollect = (at, value) => {
   floaters.spawn(at.clone().setY(at.y + 0.6), `+${value}`, 'gold');
 };
 
-player.onAssassinate = (foe) => {
-  floaters.spawn(new THREE.Vector3(foe.pos.x, foe.pos.y + 2.6, foe.pos.z), 'Silent kill', 'heavy');
+player.onAssassinate = player2.onAssassinate = (foe) => {
+  ctx.floatText(new THREE.Vector3(foe.pos.x, foe.pos.y + 2.6, foe.pos.z), 'Silent kill', 'heavy');
 };
 
 function spawnFighter(kind: FighterKind, x: number, z: number, opts?: SpawnOptions) {
@@ -240,17 +281,27 @@ function travel(index: number) {
 }
 
 /** Picks up a weapon; with your hands full, the one you hold drops where you stand. */
-function takeWeapon(w: Weapon) {
-  const dropped = player.takeWeapon(w);
+function takeWeapon(w: Weapon, p: Player = player) {
+  const dropped = p.takeWeapon(w);
   sfx.pickup();
-  hud.toast(dropped ? `Took ${weaponName(w)}, dropped ${weaponName(dropped)}` : `Took ${weaponName(w)}`);
-  if (dropped) campaign.dropWeapon(dropped, player.pos);
+  const who = twoPlayer ? `${p.name}: ` : '';
+  hud.toast(who + (dropped ? `Took ${weaponName(w)}, dropped ${weaponName(dropped)}` : `Took ${weaponName(w)}`));
+  if (dropped) campaign.dropWeapon(dropped, p.pos);
   saveGame();
 }
 
 function awardXp(amount: number) {
   const before = player.level;
-  if (player.gainXp(amount) === 0) return;
+  const gained = player.gainXp(amount);
+  // Player 2 shares Player 1's level and XP.
+  if (twoPlayer) {
+    player2.loadHero(player2.name, player.level, player.xp, 0, player.rank);
+    if (gained > 0 && player2.alive) {
+      player2.hp = player2.maxHp;
+      player2.energy = player2.maxEnergy;
+    }
+  }
+  if (gained === 0) return;
   const at = new THREE.Vector3(player.pos.x, player.pos.y + 1, player.pos.z);
   fire.burst(at, 0xffb040, 40, 7, { gravity: -2, life: 1, size: 0.15 });
   fire.burst(at, 0xff4010, 25, 5, { life: 0.8, size: 0.12 });
@@ -336,13 +387,150 @@ function spawn() {
   dog.reset(SPAWN.x, SPAWN.z, cam.yaw);
   viewModel.reset();
   player.stopPowers(ctx);
+  if (twoPlayer) placePlayer2Beside();
   projectiles.clear();
   floaters.clear();
+  floaters2.clear();
   hitStopTimer = 0;
   deathShown = false;
   hud.showDeath(false);
   hud.fadeIn();
 }
+
+// ---------- Two players ----------
+
+/** Puts Player 2 (and their dog) at Player 1's side, looking the same way. */
+function placePlayer2Beside() {
+  const yaw = cam.yaw;
+  player2.stopPowers(ctx);
+  player2.reset(player.pos.x - Math.cos(yaw) * 1.6, player.pos.z + Math.sin(yaw) * 1.6);
+  cam2.yaw = yaw;
+  cam2.pitch = cam.pitch;
+  player2.facing = yaw;
+  dog2.reset(player2.pos.x, player2.pos.z, yaw);
+  viewModel2.reset();
+}
+
+/** Each view's size and shape: the whole window, or half each side by side. */
+function updateAspect() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  viewport.w = twoPlayer ? Math.floor(w / 2) : w;
+  viewport.h = h;
+  for (const c of [camera, camera2]) {
+    c.aspect = viewport.w / h;
+    c.updateProjectionMatrix();
+  }
+}
+
+/** Player 2 joins on controller `padIndex`, at Player 1's side, with a dog of their own. */
+function joinPlayer2(padIndex: number) {
+  twoPlayer = true;
+  waitingForP2 = false;
+  input2.padIndex = padIndex;
+  input2.lastPadIndex = padIndex;
+  input.exclude = padIndex;
+  if (input.lastPadIndex === padIndex) input.lastPadIndex = null;
+  ctx.players = [player, player2];
+  ctx.dogs = [dog, dog2];
+  // Same level and rank as Player 1, and a copy of their gear.
+  player2.loadHero(randomDemonName(player.name), player.level, player.xp, 0, player.rank);
+  player2.weapons = player.weapons.map((w) => ({ ...w }));
+  player2.equipped = player.equipped;
+  player2.armor = player.armor ? { ...player.armor } : null;
+  dog2.name = randomDogName(dog.name);
+  dog2.visible = true;
+  for (const a of avatars) a.visible = true;
+  placePlayer2Beside();
+  document.getElementById('hud')!.classList.add('split');
+  hud2.show(true);
+  hud.setPlayer2(true);
+  updateAspect();
+  sfx.warHorn();
+  hud.announce(`${player2.name} has joined!`, `With ${dog2.name} at their side · Pause · Remove Player 2`);
+}
+
+function leavePlayer2() {
+  if (!twoPlayer) return;
+  twoPlayer = false;
+  waitingForP2 = false;
+  player2.stopPowers(ctx);
+  input.exclude = null;
+  input2.padIndex = null;
+  ctx.players = [player];
+  ctx.dogs = [dog];
+  dog2.visible = false;
+  for (const a of avatars) a.visible = false;
+  floaters2.clear();
+  document.getElementById('hud')!.classList.remove('split');
+  hud2.show(false);
+  hud.setPlayer2(false);
+  hud.setDown(null);
+  updateAspect();
+  // Player 1 can't stay down waiting for a partner who has gone.
+  if (!player.alive) player.deadTime = Math.max(player.deadTime, 1.6);
+  hud.announce(`${player2.name} has left`, '');
+}
+
+/** Each controller's A button last frame, to catch a fresh press. */
+const padA = new Map<number, boolean>();
+
+/**
+ * A second controller pressing A brings in Player 2: any time, if Player 1
+ * is already on a controller, or after "Add Player 2" (so a keyboard player
+ * can be joined by someone with a controller).
+ */
+function checkJoin() {
+  const pads = navigator.getGamepads?.() ?? [];
+  for (const p of pads) {
+    if (!p?.connected) continue;
+    const down = !!(p.buttons[PAD.A]?.pressed || (p.buttons[PAD.A]?.value ?? 0) > 0.5);
+    const fresh = down && !padA.get(p.index);
+    padA.set(p.index, down);
+    if (!fresh || twoPlayer || phase !== 'playing' || hud.endingOpen || menuNav.menuOpen) continue;
+    const p1Pad = input.lastPadIndex;
+    const p1OnKeyboard = input.mode === 'mouse' || p1Pad === null;
+    if ((waitingForP2 && (p1OnKeyboard || p.index !== p1Pad)) || (p1Pad !== null && input.mode === 'gamepad' && p.index !== p1Pad)) {
+      joinPlayer2(p.index);
+      return;
+    }
+  }
+}
+
+/** Seconds until a fallen demon rises beside the other (two players, while the other stands). */
+function revivingIn(p: Player): number | null {
+  if (!twoPlayer || p.alive) return null;
+  const other = p === player ? player2 : player;
+  return other.alive ? REVIVE_TIME - p.deadTime : null;
+}
+
+function updateRevives() {
+  if (!twoPlayer) return;
+  for (const p of [player, player2]) {
+    const left = revivingIn(p);
+    if (left === null || left > 0) continue;
+    const other = p === player ? player2 : player;
+    const otherCam = p === player ? cam2 : cam;
+    const yaw = otherCam.yaw;
+    p.reset(other.pos.x - Math.cos(yaw) * 1.6, other.pos.z + Math.sin(yaw) * 1.6);
+    const myCam = p === player ? cam : cam2;
+    myCam.yaw = yaw;
+    myCam.pitch = 0;
+    p.facing = yaw;
+    fire.burst(new THREE.Vector3(p.pos.x, p.pos.y + 1, p.pos.z), 0xff6a10, 30, 5, { life: 0.8, size: 0.15 });
+    sfx.unlock();
+    hud.toast(`${p.name} claws back out of the pits`);
+  }
+}
+
+hud.onTogglePlayer2 = () => {
+  if (twoPlayer) leavePlayer2();
+  else {
+    waitingForP2 = true;
+    hud.announce('Player 2', 'Press A on the second controller to join');
+  }
+  lockPointer();
+};
 
 /** Grabs the pointer. If the browser refuses, the pause screen offers Resume. */
 function lockPointer() {
@@ -422,6 +610,7 @@ hud.onBegin = () => {
 hud.onResume = lockPointer;
 hud.onQuit = () => {
   saveGame();
+  leavePlayer2();
   phase = 'menu';
   player.stopPowers(ctx);
   campaign.cancel();
@@ -537,9 +726,8 @@ function updateXboxTip(dt: number) {
 }
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  updateAspect();
 });
 
 // The world behind the title is the plane your saved game is on.
@@ -574,6 +762,7 @@ function separateBodies() {
     { pos: player.pos, radius: player.radius, mass: 3 },
     { pos: dog.pos, radius: dog.radius, mass: 3 },
   ];
+  if (twoPlayer) bodies.push({ pos: player2.pos, radius: player2.radius, mass: 3 }, { pos: dog2.pos, radius: dog2.radius, mass: 3 });
   for (const f of fighters) {
     if (f.alive && f.pos.distanceToSquared(player.pos) < 60 * 60) bodies.push({ pos: f.pos, radius: f.radius, mass: f.radius > 0.5 ? 2 : 1 });
   }
@@ -595,11 +784,11 @@ function separateBodies() {
 }
 
 /** The closest thing you can use with E that you're facing. */
-function nearestInteractable(): Interactable | null {
+function nearestInteractable(player: Player, cam: FirstPersonCamera): Interactable | null {
   let best: Interactable | null = null;
   let bestScore = Infinity;
   cam.lookDir(lookDir);
-  for (const i of campaign.interactables(ctx, takeWeapon)) {
+  for (const i of campaign.interactables(ctx, (w) => takeWeapon(w, player))) {
     const dx = i.pos.x - player.pos.x;
     const dz = i.pos.z - player.pos.z;
     const d = Math.hypot(dx, dz);
@@ -617,19 +806,25 @@ function nearestInteractable(): Interactable | null {
   return best;
 }
 
+let p2Roaring = false;
+
 /** Advances the game by one frame of `realDt` seconds. */
 function tick(realDt: number) {
+  // A second controller's A press is checked before Player 1 reads it as their own.
+  checkJoin();
   input.poll(realDt);
+  if (twoPlayer) input2.poll(realDt);
   // The Menu button opens and closes the pause menu; the menus themselves are driven by the d-pad, A and B.
-  if (input.pausePressed && phase === 'playing' && player.alive) {
+  const inputs = twoPlayer ? [input, input2] : [input];
+  if (inputs.some((i) => i.pausePressed) && phase === 'playing' && !deathShown) {
     if (hud.pauseOpen) lockPointer();
     else if (!menuNav.menuOpen) pauseGame();
   }
   // A press that works a menu shouldn't also act in the game the moment the menu closes.
   const menuWasOpen = menuNav.menuOpen;
-  menuNav.update([input]);
+  menuNav.update(inputs);
   // With a controller there's no mouse capture: play whenever no menu is open.
-  const padPlay = (input.mode === 'gamepad' || IS_XBOX) && !menuWasOpen && !menuNav.menuOpen;
+  const padPlay = (input.mode === 'gamepad' || IS_XBOX || twoPlayer) && !menuWasOpen && !menuNav.menuOpen;
   const playing = phase === 'playing' && (input.locked || padPlay || testMode) && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen;
   updateXboxTip(realDt);
   foes.length = 0;
@@ -644,6 +839,7 @@ function tick(realDt: number) {
       saveGame();
     }
     cam.applyInput(input, realDt);
+    if (twoPlayer) cam2.applyInput(input2, realDt);
     let dt = realDt;
     // Hit-stop: freeze the action for a moment when a blow lands.
     if (hitStopTimer > 0) {
@@ -652,6 +848,11 @@ function tick(realDt: number) {
     }
     player.update(dt, ctx, input, cam);
     dog.update(dt, ctx);
+    if (twoPlayer) {
+      player2.update(dt, ctx, input2, cam2);
+      dog2.update(dt, ctx);
+      updateRevives();
+    }
     for (const a of trainingAngels) a.update(dt, ctx);
     for (const f of fighters) f.update(dt, ctx);
     separateBodies();
@@ -659,21 +860,28 @@ function tick(realDt: number) {
     projectiles.update(dt, ctx);
     geysers.update(dt, ctx);
     spikes.update(dt, ctx);
-    pickups.update(dt, player.pos);
+    pickups.update(dt, twoPlayer ? [player.pos, player2.pos] : [player.pos]);
     debris.update(dt);
     fire.update(dt);
 
     // Use things with E; a silent kill takes over the prompt when you can make one.
-    if (player.alive) {
-      const target = nearestInteractable();
-      if (player.assassinTarget) hud.setPrompt('Kill silently', true);
-      else hud.setPrompt(target?.label ?? null);
-      if (target && input.interactPressed) {
+    const views = [{ p: player, c: cam, i: input, prompt: (t: string | null, a?: boolean) => hud.setPrompt(t, a) }];
+    if (twoPlayer) views.push({ p: player2, c: cam2, i: input2, prompt: (t, a) => hud2.setPrompt(t, a) });
+    for (const v of views) {
+      if (!v.p.alive) {
+        v.prompt(null);
+        continue;
+      }
+      const target = nearestInteractable(v.p, v.c);
+      if (v.p.assassinTarget) v.prompt('Kill silently', true);
+      else v.prompt(target?.label ?? null);
+      if (target && v.i.interactPressed) {
         if (target.kind === 'ruler') openRuler();
         else if (target.kind === 'portal') openPortal();
         else target.act();
+        break; // a dialog may have opened
       }
-    } else hud.setPrompt(null);
+    }
   } else if (phase === 'menu') {
     // The world stays alive behind the title.
     for (const a of trainingAngels) a.update(realDt, ctx);
@@ -691,6 +899,16 @@ function tick(realDt: number) {
     camera.updateMatrixWorld();
     viewModel.flying = player.flying;
     viewModel.update(playing ? realDt : 0, camera, player.weapon, player.armor, player.swingInfo, player.bob, player.walkPhase, { x: input.mouseDX, y: input.mouseDY });
+    if (twoPlayer) {
+      cam2.update(realDt, player2.eye(eye), player2.bob, player2.walkPhase, player2.sprinting);
+      camera2.updateMatrixWorld();
+      viewModel2.flying = player2.flying;
+      const stick = input2.lookStick();
+      viewModel2.update(playing ? realDt : 0, camera2, player2.weapon, player2.armor, player2.swingInfo, player2.bob, player2.walkPhase, { x: stick.x * 12, y: stick.y * 8 });
+      avatars[0].update(realDt, player);
+      avatars[1].update(realDt, player2);
+      floaters2.update(realDt, camera2);
+    }
   }
   floaters.update(realDt, camera);
   // The breath lights the ground in front of you, flickering.
@@ -700,8 +918,17 @@ function tick(realDt: number) {
     camera.getWorldDirection(breathLight.position).multiplyScalar(2.5).add(camera.position);
   }
   if (!playing && player.breathing) setBreathing(false);
+  // Player 2's fire roars too, when Player 1 isn't already breathing.
+  const p2Roar = playing && twoPlayer && player2.breathing && !player.breathing;
+  if (p2Roar !== p2Roaring || (p2Roar && Math.random() < realDt * 4)) {
+    p2Roaring = p2Roar;
+    setBreathing(p2Roar);
+  }
 
-  if (!player.alive && player.deadTime > 1.6 && !deathShown) {
+  // Banished when every demon is down (in two-player, a fallen one rises beside the other).
+  const allDown = !player.alive && (!twoPlayer || !player2.alive);
+  const downFor = twoPlayer ? Math.min(player.deadTime, player2.deadTime) : player.deadTime;
+  if (allDown && downFor > 1.6 && !deathShown) {
     deathShown = true;
     campaign.onPlayerDeath();
     if (document.pointerLockElement) document.exitPointerLock();
@@ -728,16 +955,47 @@ function tick(realDt: number) {
   }
   hud.padMode = input.mode === 'gamepad' || IS_XBOX;
   hud.update(realDt, player, dog.name, kills);
+  if (twoPlayer) {
+    hud2.update(player2, dog2.name, revivingIn(player2));
+    const left = revivingIn(player);
+    hud.setDown(left !== null ? `Rising again in ${Math.max(1, Math.ceil(left))}…` : null);
+  }
   input.endFrame();
 }
 
 function render() {
   renderer.info.reset();
+  // Shadows are drawn once a frame, however many views there are.
+  renderer.shadowMap.needsUpdate = true;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (!twoPlayer || phase !== 'playing') {
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, w, h);
+    drawView(camera, viewModel, player);
+    return;
+  }
+  // Split screen: Player 1 on the left, Player 2 on the right.
+  const half = Math.floor(w / 2);
+  renderer.setScissorTest(true);
+  for (const [i, c, vm, p] of [
+    [0, camera, viewModel, player],
+    [1, camera2, viewModel2, player2],
+  ] as const) {
+    renderer.setViewport(i * half, 0, half, h);
+    renderer.setScissor(i * half, 0, half, h);
+    drawView(c, vm, p);
+  }
+  renderer.setScissorTest(false);
+}
+
+/** The world from one demon's eyes, then their arms and weapon on top. */
+function drawView(c: THREE.PerspectiveCamera, vm: ViewModel, p: Player) {
   renderer.clear();
-  renderer.render(scene, camera);
-  if (phase === 'playing' && player.alive && !hud.endingOpen) {
+  renderer.render(scene, c);
+  if (phase === 'playing' && p.alive && !hud.endingOpen) {
     renderer.clearDepth();
-    renderer.render(viewModel.scene, camera);
+    renderer.render(vm.scene, c);
   }
 }
 
@@ -776,6 +1034,16 @@ Object.assign(window, {
   __game: {
     player,
     dog,
+    player2,
+    dog2,
+    input2,
+    cam2,
+    camera2,
+    joinPlayer2,
+    leavePlayer2,
+    get twoPlayer() {
+      return twoPlayer;
+    },
     get trainingAngels() {
       return trainingAngels;
     },

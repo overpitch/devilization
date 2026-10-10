@@ -80,6 +80,8 @@ export class Player {
   spikeCooldown = 0;
 
   readonly pos = new THREE.Vector3();
+  /** 0 for Player 1, 1 for Player 2 in split screen. */
+  slot = 0;
   /** -1 tiny, 0 normal, 1 huge (from level 30). */
   size: Size = 0;
   /** Smoothly follows the size's scale, for the camera and collisions. */
@@ -115,7 +117,7 @@ export class Player {
   lastTarget: Foe | null = null;
   lastTargetTime = -Infinity;
 
-  private vel = new THREE.Vector3();
+  readonly vel = new THREE.Vector3();
   private grounded = true;
   /** Smooths the camera when stepping up a block. */
   private eyeLag = 0;
@@ -408,9 +410,9 @@ export class Player {
     }
     if (canBreathe !== this.breathing) {
       this.breathing = canBreathe;
-      setBreathing(canBreathe);
+      if (this.slot === 0) setBreathing(canBreathe);
     } else if (canBreathe && Math.random() < dt * 4) {
-      setBreathing(true); // keeps the roar flickering
+      if (this.slot === 0) setBreathing(true); // keeps the roar flickering
     }
 
     // ----- Ground spikes -----
@@ -423,11 +425,11 @@ export class Player {
     } else if (wantAim) {
       this.aiming = true;
       this.aimValid = this.aimAtGround(cam);
-      ctx.spikes.aim(this.aimValid ? this.aimPoint : null, this.spikesReady);
+      ctx.spikes.aim(this.aimValid ? this.aimPoint : null, this.spikesReady, this.slot);
     } else if (this.aiming) {
       // Let go: strike.
       this.aiming = false;
-      ctx.spikes.aim(null, false);
+      ctx.spikes.aim(null, false, this.slot);
       if (!this.aimValid) {
         // Looking at the sky: nothing to aim at.
       } else if (!this.spikesReady) {
@@ -474,9 +476,9 @@ export class Player {
 
   /** Stops breathing and aiming (death, pause). */
   stopPowers(ctx: GameContext) {
-    if (this.breathing) setBreathing(false);
+    if (this.breathing && this.slot === 0) setBreathing(false);
     this.breathing = false;
-    if (this.aiming) ctx.spikes.aim(null, false);
+    if (this.aiming) ctx.spikes.aim(null, false, this.slot);
     this.aiming = false;
   }
 

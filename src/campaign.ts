@@ -353,11 +353,10 @@ export class Campaign {
 
   /** A huge demon walking into rubble smashes it apart. */
   private updateGates(ctx: GameContext) {
-    const p = ctx.player;
     for (const [g, grp] of this.rubble) {
       if (g.open) continue;
-      const near = Math.abs(p.pos.x - g.x) < g.hw + p.radius + 0.3 && Math.abs(p.pos.z - g.z) < g.hd + p.radius + 0.3;
-      if (!near) continue;
+      const p = ctx.players.find((q) => Math.abs(q.pos.x - g.x) < g.hw + q.radius + 0.3 && Math.abs(q.pos.z - g.z) < g.hd + q.radius + 0.3);
+      if (!p) continue;
       if (p.size !== 1) {
         if (Math.random() < 0.01) ctx.toast('Only something huge could move these boulders');
         continue;
@@ -671,9 +670,10 @@ export class Campaign {
     const fin = this.plane.finale!;
     const g = a.target;
     if (!g) return;
-    if (a.phase === 'go' && this.insideFortress(ctx.player.pos)) {
+    const stormer = ctx.players.find((p) => p.alive && this.insideFortress(p.pos));
+    if (a.phase === 'go' && stormer) {
       a.phase = 'fight';
-      g.becomeAlert(ctx, ctx.player, true);
+      g.becomeAlert(ctx, stormer, true);
       this.hooks.announce(fin.general, `“${fin.taunt}”`);
       sfx.warHorn();
     }

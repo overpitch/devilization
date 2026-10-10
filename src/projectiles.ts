@@ -59,7 +59,7 @@ export class Projectiles {
   }
 
   update(dt: number, ctx: GameContext) {
-    const targets: HellBody[] = [ctx.player, ctx.dog];
+    const targets: HellBody[] = [...ctx.players, ...ctx.dogs];
     for (const f of ctx.fighters) if (f.side === 'hell' && f.alive) targets.push(f);
     for (let i = this.items.length - 1; i >= 0; i--) {
       const p = this.items[i];

@@ -65,12 +65,15 @@ export class Pickups {
     }
   }
 
-  update(dt: number, player: THREE.Vector3) {
+  /** `players`: where each demon is; coins fly to the nearest. */
+  update(dt: number, players: THREE.Vector3[]) {
     for (let i = 0; i < MAX; i++) {
       const c = this.coins[i];
       if (!c.active) continue;
       c.age += dt;
       c.spin += dt * 4;
+      let player = players[0];
+      for (const p of players) if (p.distanceToSquared(c.pos) < player.distanceToSquared(c.pos)) player = p;
       const dx = player.x - c.pos.x;
       const dy = player.y + 1 - c.pos.y;
       const dz = player.z - c.pos.z;
