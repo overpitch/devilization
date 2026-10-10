@@ -62,6 +62,14 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 
 ## What's in so far
 
+### Phase 10
+
+- **Music,** generated live like the sound effects: a slow, ominous title theme with war drums and a low choir; music for wandering that takes on each plane's flavor (Phrygian dread on the Burning Plains, hollow pads in the Ash Wastes, chimes in Frozen Hell, a choir in the Abyss, heaven's key turned against you in the war camp); war drums and brass when angels hunt you; a choir-and-organ boss theme for the general; and a dark fanfare for the Demon Lord ending. Themes crossfade as things change. **Music volume** has its own slider in the pause menu.
+- **Heartbeat:** your heart pounds below 30% health, faster the closer you are to death.
+- **Title screen:** a glowing demon emblem over the name, and a line about players and controllers.
+- **Balancing:** the climb to level 50 is shorter (about 51,000 XP instead of 61,000), and side missions on deeper planes pay more XP, so the last stretch from level 40 to 50 takes roughly two thirds as many missions.
+- **Fix:** the Xbox tip no longer shows on computers.
+
 ### Phase 9
 
 - **Split-screen co-op:** a second demon on a second controller, with the screen split down the middle. Each player has their own view, arms, weapon, health, hellfire, prompts and damage numbers; the objective, gold and announcements are shared.
@@ -198,6 +206,7 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 | `src/particles.ts` | Fire, sparks, dust and feathers |
 | `src/floaters.ts` | Floating damage numbers |
 | `src/audio.ts` | Synthesized sound effects and the low roar of the plains |
+| `src/music.ts` | The procedural soundtrack |
 | `src/hud.ts` | Status bars, power slots, and the title, naming, intro, pause and death screens |
 | `src/input.ts` | Keyboard, pointer-lock mouse and controllers |
 | `src/menuNav.ts` | Driving the menus with a controller |

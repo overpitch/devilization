@@ -3,14 +3,17 @@
  * files to download. The context starts on the first click (browsers block
  * audio before a user gesture).
  *
- * Routing: effects → sfx bus → compressor → master → speakers
+ * Routing: effects → sfx bus ─┐
+ *          music → music bus ─┴→ compressor → master → speakers
  */
 let ac: AudioContext | null = null;
 let sfxBus: GainNode | null = null;
+let musicBus: GainNode | null = null;
 let noise: AudioBuffer | null = null;
 let ambience: GainNode | null = null;
 let breath: { gain: GainNode; filter: BiquadFilterNode } | null = null;
 let sfxVolume = 0.8;
+let musicVolume = 0.6;
 
 export function initAudio() {
   if (!ac) {
@@ -23,6 +26,8 @@ export function initAudio() {
     limiter.connect(master).connect(ac.destination);
     sfxBus = ac.createGain();
     sfxBus.connect(limiter);
+    musicBus = ac.createGain();
+    musicBus.connect(limiter);
     applyVolume();
     noise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const data = noise.getChannelData(0);
@@ -33,33 +38,41 @@ export function initAudio() {
   if (ac.state === 'suspended') void ac.resume();
 }
 
-/** Effects volume, 0..1 (from Options). */
-export function setVolume(effects: number) {
+/** Music and effects volume, 0..1 each (from Options). */
+export function setVolumes(music: number, effects: number) {
+  musicVolume = music;
   sfxVolume = effects;
   applyVolume();
 }
 
 function applyVolume() {
-  if (!ac || !sfxBus) return;
+  if (!ac || !sfxBus || !musicBus) return;
   // Squared for a more natural-feeling slider.
   sfxBus.gain.setTargetAtTime(0.8 * sfxVolume ** 2, ac.currentTime, 0.05);
+  musicBus.gain.setTargetAtTime(0.6 * musicVolume ** 2, ac.currentTime, 0.05);
+}
+
+/** Where the soundtrack plays, once sound has started. */
+export function musicOutput() {
+  const a = ready();
+  return a && musicBus ? { ac: a, bus: musicBus } : null;
 }
 
 function ready() {
   return ac && ac.state === 'running' ? ac : null;
 }
 
-/** A gain node with a quick attack and exponential decay, wired to the effects bus. */
-function envelope(a: AudioContext, t: number, peak: number, attack: number, decay: number) {
+/** A gain node with a quick attack and exponential decay, wired to `dest` (the effects bus by default). */
+export function envelope(a: AudioContext, t: number, peak: number, attack: number, decay: number, dest?: AudioNode) {
   const g = a.createGain();
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), t + attack);
   g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
-  g.connect(sfxBus!);
+  g.connect(dest ?? sfxBus!);
   return g;
 }
 
-function noiseSource(a: AudioContext, t: number, dur: number) {
+export function noiseSource(a: AudioContext, t: number, dur: number) {
   const src = a.createBufferSource();
   src.buffer = noise;
   src.loop = true;
@@ -68,7 +81,7 @@ function noiseSource(a: AudioContext, t: number, dur: number) {
   return src;
 }
 
-function tone(a: AudioContext, type: OscillatorType, from: number, to: number, t: number, dur: number) {
+export function tone(a: AudioContext, type: OscillatorType, from: number, to: number, t: number, dur: number) {
   const o = a.createOscillator();
   o.type = type;
   o.frequency.setValueAtTime(from, t);
@@ -78,7 +91,7 @@ function tone(a: AudioContext, type: OscillatorType, from: number, to: number, t
   return o;
 }
 
-function filter(a: AudioContext, type: BiquadFilterType, freq: number, q = 1) {
+export function filter(a: AudioContext, type: BiquadFilterType, freq: number, q = 1) {
   const f = a.createBiquadFilter();
   f.type = type;
   f.frequency.value = freq;
@@ -175,6 +188,16 @@ export const sfx = {
   },
 
   /** The ball thudding into the ground. */
+  /** Lub-dub: your heart pounding when you're close to death. */
+  heartbeat(vol = 1) {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    for (const [at, peak] of [[0, 0.5], [0.16, 0.35]] as const) {
+      tone(a, 'sine', 62, 40, t + at, 0.14).connect(envelope(a, t + at, peak * vol, 0.01, 0.14));
+    }
+  },
+
   thud(vol = 1) {
     const a = ready();
     if (!a || vol < 0.03) return;

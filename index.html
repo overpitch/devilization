@@ -84,14 +84,20 @@
     <!-- Title -->
     <div id="title-screen" class="overlay screen">
       <div class="embers" id="embers"></div>
-      <div class="version">Phase 9 · All sound is generated live in your browser</div>
+      <div class="version">Phase 10 · All music and sound is generated live in your browser</div>
       <div class="panel">
+        <svg class="emblem" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M7 6l5 9h8l5-9-2 12-5 4h-4l-5-4z" fill="#c9242a" />
+          <rect x="12" y="15" width="2.5" height="2" fill="#ffd040" />
+          <rect x="17.5" y="15" width="2.5" height="2" fill="#ffd040" />
+        </svg>
         <h1>DEVILIZATION</h1>
         <p class="subtitle">Rise from Imp to Demon Lord</p>
         <div class="menu">
           <button id="continue-btn" class="hidden">Continue<span class="button-sub" id="continue-sub"></span></button>
           <button id="new-game-btn">New Game</button>
         </div>
+        <p class="players-line">1–2 players · keyboard and mouse, or controllers · split-screen co-op</p>
         <p class="xbox-tip hidden" id="xbox-tip">
           <strong>On Xbox:</strong> hold the ☰ <strong>Menu</strong> button for a second to switch the controller to
           <strong>game controls</strong>. Otherwise the sticks move a cursor and B leaves the page.
@@ -156,6 +162,11 @@
             <span>Invert vertical look</span>
             <input type="checkbox" id="invert-y" />
             <output id="invert-value">Off</output>
+          </label>
+          <label class="option">
+            <span>Music volume</span>
+            <input type="range" id="music-volume" min="0" max="1" step="0.05" value="0.6" />
+            <output id="music-volume-value">60%</output>
           </label>
           <label class="option">
             <span>Sound volume</span>

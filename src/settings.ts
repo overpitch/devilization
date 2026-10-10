@@ -11,6 +11,8 @@ export interface Settings {
   invertY: boolean;
   /** 0..1 */
   sfxVolume: number;
+  /** 0..1 */
+  musicVolume: number;
   /** 'low' turns off shadows and renders at a lower resolution, for slower computers. */
   graphics: Graphics;
   /** Device-specific defaults (Low on Xbox) have been applied once. */
@@ -22,7 +24,7 @@ export const IS_XBOX = /xbox/i.test(navigator.userAgent) || new URLSearchParams(
 
 const KEY = 'devilization.settings';
 
-export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, invertY: false, sfxVolume: 0.8, graphics: 'high' };
+export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, invertY: false, sfxVolume: 0.8, musicVolume: 0.6, graphics: 'high' };
 
 export function loadSettings(): Settings {
   const settings = { ...DEFAULT_SETTINGS };
@@ -34,6 +36,7 @@ export function loadSettings(): Settings {
       if (typeof parsed.invertY === 'boolean') settings.invertY = parsed.invertY;
       if (parsed.graphics === 'high' || parsed.graphics === 'low') settings.graphics = parsed.graphics;
       if (typeof parsed.sfxVolume === 'number' && parsed.sfxVolume >= 0 && parsed.sfxVolume <= 1) settings.sfxVolume = parsed.sfxVolume;
+      if (typeof parsed.musicVolume === 'number' && parsed.musicVolume >= 0 && parsed.musicVolume <= 1) settings.musicVolume = parsed.musicVolume;
       settings.deviceDefaults = parsed.deviceDefaults === true;
     }
   } catch {

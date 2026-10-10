@@ -16,7 +16,8 @@ import { ViewModel } from './viewmodel';
 import { Hud } from './hud';
 import { Particles } from './particles';
 import { Floaters } from './floaters';
-import { initAudio, setAmbience, setBreathing, setVolume, sfx } from './audio';
+import { initAudio, setAmbience, setBreathing, setVolumes, sfx } from './audio';
+import { Music, type Theme } from './music';
 import { IS_XBOX, loadSettings, saveSettings, type Settings } from './settings';
 import { MenuNavigator } from './menuNav';
 import { Avatar } from './avatar';
@@ -95,6 +96,9 @@ player2.ballAt = () => viewModel2.ballWorld;
 player2.onLand = (speed) => cam2.addShake(Math.min(speed / 50, 0.3));
 player2.onHurt = () => input2.rumble(0.7, 180);
 const armory = new Armory();
+const music = new Music();
+/** Seconds the battle music holds on after the last angel stops hunting you. */
+let battleHold = 0;
 let armoryTab: ArmoryTab = 'weapons';
 
 player.ballAt = () => viewModel.ballWorld;
@@ -121,7 +125,7 @@ const foes: Foe[] = [];
 function applySettings(s: Settings) {
   cam.sensitivity = s.sensitivity;
   cam.invertY = s.invertY;
-  setVolume(s.sfxVolume);
+  setVolumes(s.musicVolume, s.sfxVolume);
   const low = s.graphics === 'low';
   // Xbox browsers are slow at filling pixels: on Low they draw at three quarters resolution.
   renderer.setPixelRatio(low ? Math.min(window.devicePixelRatio, 1) * (IS_XBOX ? 0.75 : 1) : Math.min(window.devicePixelRatio, 2));
@@ -807,6 +811,36 @@ function nearestInteractable(player: Player, cam: FirstPersonCamera): Interactab
 }
 
 let p2Roaring = false;
+let heartTimer = 0;
+
+/** Your heart pounds, faster the closer you are to death (below 30% health). */
+function updateHeartbeat(dt: number, playing: boolean) {
+  const share = player.hp / player.maxHp;
+  if (!playing || !player.alive || share >= 0.3) {
+    heartTimer = 0;
+    return;
+  }
+  heartTimer -= dt;
+  if (heartTimer <= 0) {
+    sfx.heartbeat(0.5 + (0.3 - share) * 2);
+    heartTimer = 0.55 + share * 2;
+  }
+}
+
+/** Picks the soundtrack for what's happening: title, wandering, a fight, the general, the ending. */
+function updateMusic(dt: number) {
+  let theme: Theme;
+  if (hud.endingOpen) theme = 'victory';
+  else if (phase === 'menu') theme = 'title';
+  else if (!ctx.players.some((p) => p.alive)) theme = 'silence';
+  else if (fighters.some((f) => f.kind === 'general' && f.alive && f.state === 'alert')) theme = 'boss';
+  else {
+    const hunted = fighters.some((f) => f.side === 'heaven' && f.alive && f.state === 'alert' && ctx.players.some((p) => f.pos.distanceToSquared(p.pos) < 32 * 32));
+    battleHold = hunted ? 6 : Math.max(0, battleHold - dt);
+    theme = battleHold > 0 ? 'battle' : 'explore';
+  }
+  music.set(theme, plane().index);
+}
 
 /** Advances the game by one frame of `realDt` seconds. */
 function tick(realDt: number) {
@@ -955,6 +989,8 @@ function tick(realDt: number) {
   }
   hud.padMode = input.mode === 'gamepad' || IS_XBOX;
   hud.update(realDt, player, dog.name, kills);
+  updateMusic(realDt);
+  updateHeartbeat(realDt, playing);
   if (twoPlayer) {
     hud2.update(player2, dog2.name, revivingIn(player2));
     const left = revivingIn(player);
@@ -1041,6 +1077,7 @@ Object.assign(window, {
     camera2,
     joinPlayer2,
     leavePlayer2,
+    music,
     get twoPlayer() {
       return twoPlayer;
     },

@@ -188,6 +188,7 @@ export class Hud {
     const sens = $<HTMLInputElement>('sens');
     const invert = $<HTMLInputElement>('invert-y');
     const volume = $<HTMLInputElement>('sfx-volume');
+    const music = $<HTMLInputElement>('music-volume');
     const low = $<HTMLInputElement>('low-graphics');
     const show = () => {
       sens.value = String(settings.sensitivity);
@@ -196,6 +197,8 @@ export class Hud {
       $('invert-value').textContent = settings.invertY ? 'On' : 'Off';
       volume.value = String(settings.sfxVolume);
       $('sfx-volume-value').textContent = `${Math.round(settings.sfxVolume * 100)}%`;
+      music.value = String(settings.musicVolume);
+      $('music-volume-value').textContent = `${Math.round(settings.musicVolume * 100)}%`;
       low.checked = settings.graphics === 'low';
       $('graphics-value').textContent = low.checked ? 'On' : 'Off';
     };
@@ -203,11 +206,12 @@ export class Hud {
       settings.sensitivity = Number(sens.value);
       settings.invertY = invert.checked;
       settings.sfxVolume = Number(volume.value);
+      settings.musicVolume = Number(music.value);
       settings.graphics = low.checked ? 'low' : 'high';
       show();
       this.onSettings?.(settings);
     };
-    for (const el of [sens, invert, volume, low]) el.addEventListener('input', changed);
+    for (const el of [sens, invert, music, volume, low]) el.addEventListener('input', changed);
     show();
   }
 

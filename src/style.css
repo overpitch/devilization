@@ -1071,6 +1071,10 @@ h1.victory {
   color: #c9a990;
 }
 
+.xbox-tip.hidden {
+  display: none;
+}
+
 .xbox-tip {
   max-width: 420px;
   margin: 22px auto 0;
@@ -1148,4 +1152,28 @@ h1.victory {
 /* No room for the power slots in half a screen. */
 #hud.split .powers {
   display: none;
+}
+
+/* ---------- Title polish ---------- */
+
+/* The demon's face above the name, breathing with a red glow. */
+.emblem {
+  display: block;
+  width: clamp(56px, 10vw, 84px);
+  height: auto;
+  margin: 0 auto 8px;
+  filter: drop-shadow(0 0 12px rgba(255, 60, 30, 0.6));
+  animation: emblem-glow 3.2s ease-in-out infinite;
+}
+
+@keyframes emblem-glow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(255, 60, 30, 0.45)); transform: translateY(0); }
+  50% { filter: drop-shadow(0 0 22px rgba(255, 90, 30, 0.85)); transform: translateY(-3px); }
+}
+
+.players-line {
+  margin: 18px 0 0;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: rgba(216, 190, 170, 0.7);
 }

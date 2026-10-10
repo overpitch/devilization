@@ -451,7 +451,7 @@ export class Campaign {
           kind: t.kind,
           main: false,
           brief: t.brief,
-          reward: { xp: Math.round((40 + 8 * level) * Math.sqrt(this.plane.power)), gold: 25 + 5 * level },
+          reward: { xp: Math.round((40 + 8 * level) * this.plane.power ** 0.75), gold: 25 + 5 * level },
           spot,
           template,
         });

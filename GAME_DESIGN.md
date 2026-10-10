@@ -164,12 +164,12 @@ With a controller (standard layout, including Edge on Xbox): left stick moves, r
 7. ✅ **Plane 10 and the ending:** the war camp fortress, the general (summons 10 angels at half health), the Demon Lord ending, and endless missions (side missions on every plane, including Heaven's Counterattack).
 8. ✅ **Controllers and Xbox:** play with a controller, including Microsoft Edge on Xbox: game controls, menus driven by the controller, lower graphics on Xbox, and Back that doesn't leave the game.
 9. ✅ **Two-player split screen:** a second demon (with its own dog) on a controller, sharing the screen side by side.
-10. **Polish:** music, sound, balancing, title screen.
+10. ✅ **Polish:** music, sound, balancing, title screen.
 
 ## Open questions (defaults are used until decided)
 
 - Names: the demon's boss on each plane, the angel general, and rank titles (above are placeholders).
-- XP numbers: training angels give 10 XP, real angels 15–60, Vargash 100, main missions 150, side missions 40 + 8 per level; the full climb to level 50 takes about 61,000 XP. Needs balancing across all ten planes.
+- XP numbers: training angels give 10 XP, real angels 15–60, Vargash 100, main missions 150, side missions (40 + 8 per level) × plane power^0.75; the full climb to level 50 takes about 51,000 XP, about 22,000 of it from level 40 to 50.
 - Names: Malphas (ruler of the First Plane), Vargash the Traitor, angel captains (Auriel and others) are placeholders.
 - Seraphs (flying angels) and knights are planned for deeper planes.
 - Do demon troops fight alongside you outside war-front missions? (default: no; just you and the dog)

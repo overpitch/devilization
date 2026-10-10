@@ -8,7 +8,7 @@
 export const MAX_LEVEL = 50;
 
 /** XP needed to go from `level` to the next. */
-export const xpToNext = (level: number) => 50 + 15 * level + level * level;
+export const xpToNext = (level: number) => Math.round(50 + 15 * level + 0.75 * level * level);
 
 export function statsForLevel(level: number) {
   const n = level - 1;
