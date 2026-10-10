@@ -19,6 +19,8 @@ const CONTROLS: [string, string][] = [
   ['E', 'Talk, take, open'],
   ['C (hold)', 'Sneak (kill unaware enemies from behind)'],
   ['1-4 or Q', 'Switch weapon'],
+  ['Z / X', `Shrink / grow (level ${UNLOCK.size})`],
+  ['Space twice', `Take off or land (level ${UNLOCK.flight}); hold Space to climb, C to sink`],
   ['Space', 'Jump'],
   ['Shift', 'Sprint'],
   ['Esc', 'Pause: armory, options, return to the lair'],
@@ -456,6 +458,20 @@ export class Hud {
     this.set('spikes-slot', `${spikesLocked}|${spikesState}`, () => {
       this.spikesSlot.classList.toggle('locked', spikesLocked);
       $('power-spikes-state').textContent = spikesState;
+    });
+    const sizeLocked = player.level < UNLOCK.size;
+    const sizeState = sizeLocked ? `Level ${UNLOCK.size}` : player.sizeName;
+    this.set('size-slot', sizeState, () => {
+      $('power-size').classList.toggle('locked', sizeLocked);
+      $('power-size').classList.toggle('active', !sizeLocked && player.size !== 0);
+      $('power-size-state').textContent = sizeState;
+    });
+    const flyLocked = player.level < UNLOCK.flight;
+    const flyState = flyLocked ? `Level ${UNLOCK.flight}` : player.flying ? 'Flying' : 'Ready';
+    this.set('fly-slot', flyState, () => {
+      $('power-fly').classList.toggle('locked', flyLocked);
+      $('power-fly').classList.toggle('active', player.flying);
+      $('power-fly-state').textContent = flyState;
     });
     this.set('spikes-cd', player.spikeCooldown.toFixed(2), (v) => ($('power-spikes-cooldown').style.width = `${(Number(v) / SPIKE_COOLDOWN) * 100}%`));
 

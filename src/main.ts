@@ -597,6 +597,7 @@ function tick(realDt: number) {
   } else {
     cam.update(realDt, player.eye(eye), player.bob, player.walkPhase, player.sprinting);
     camera.updateMatrixWorld();
+    viewModel.flying = player.flying;
     viewModel.update(playing ? realDt : 0, camera, player.weapon, player.armor, player.swingInfo, player.bob, player.walkPhase, { x: input.mouseDX, y: input.mouseDY });
   }
   floaters.update(realDt, camera);

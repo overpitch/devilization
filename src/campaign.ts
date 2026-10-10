@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createHumanoid, setFlash, type Humanoid } from './character';
 import { Fighter, type FighterKind, type SpawnOptions } from './fighter';
 import { buildWeaponMesh, randomWeaponEnchant, WEAPON_ENCHANTS, weaponName, weaponPower, type Quality, type Weapon, type WeaponId } from './weapons';
-import { addCollider, findOpenSpot, groundAt, heightAt } from './world';
+import { addCollider, findOpenSpot, groundAt, heightAt, planeGates, type Gate } from './world';
 import { LAIR, PORTAL, SPAWN, THRONE } from './layout';
 import { ALL_PLANE_NAMES, BUILT_PLANES, PLANES, plane, type PlaneDef } from './planes';
 import { sfx } from './audio';
@@ -216,6 +216,8 @@ export class Campaign {
   private readonly chestLid: THREE.Group;
   private chestOpenT = 0;
   private readonly portalGlow: THREE.Mesh;
+  /** The rubble blocking a vault, by gate (removed when smashed). */
+  private readonly rubble = new Map<Gate, THREE.Group>();
   private readonly ambient: { at: { x: number; z: number }; fighters: Fighter[]; respawn: number }[] = [];
   private time = 0;
   private playerPos = new THREE.Vector3();
@@ -231,6 +233,7 @@ export class Campaign {
     this.buildWatchpost();
     this.buildBraziers();
     this.portalGlow = this.buildPortal();
+    this.buildGates();
     const ch = this.buildChest();
     this.chest = ch.group;
     this.chestLid = ch.lid;
@@ -310,6 +313,58 @@ export class Campaign {
       part(g, iron, 0.8, 0.25, 0.8, 0, 1.2, 0);
       part(g, lambert(0xff6a10, 0xff4a00), 0.6, 0.15, 0.6, 0, 1.36, 0);
       this.root.add(g);
+    }
+  }
+
+  /**
+   * The ways into treasure vaults: a narrow crack glowing in the wall
+   * (only a tiny demon fits), or a heap of boulders (a huge demon smashes it).
+   */
+  private buildGates() {
+    for (const g of planeGates()) {
+      const y = heightAt(g.x, g.z);
+      const grp = new THREE.Group();
+      grp.position.set(g.x, y, g.z);
+      if (g.kind === 'crack') {
+        // The wall continues above a low, dark slit with a faint red glow inside.
+        part(grp, lambert(this.plane.palette.spire[0]), 1.0, 4.0, 1.0, 0, 3.0, 0);
+        part(grp, new THREE.MeshBasicMaterial({ color: 0x120404 }), 0.5, 1.0, 1.02, 0, 0.5, 0);
+        part(grp, lambert(0x2a0804, 0x8a1a04), 0.1, 0.9, 1.04, 0, 0.5, 0);
+      } else {
+        // Loose boulders heaped in the doorway.
+        // (The doorway is open above: a huge demon is too tall for a lintel.)
+        const rock = lambert(this.plane.palette.rock[0]);
+        const width = g.hw * 2;
+        for (let i = 0; i < 9; i++) {
+          const size = (0.6 + Math.random() * 0.4) * (width / 2);
+          const b = part(grp, rock, size, size, size, ((i % 3) - 1) * g.hw * 0.66, 0.4 + Math.floor(i / 3) * 0.7, (Math.random() - 0.5) * 0.4);
+          b.rotation.set(Math.random(), Math.random(), Math.random());
+        }
+        this.rubble.set(g, grp);
+      }
+      this.root.add(grp);
+    }
+  }
+
+  /** A huge demon walking into rubble smashes it apart. */
+  private updateGates(ctx: GameContext) {
+    const p = ctx.player;
+    for (const [g, grp] of this.rubble) {
+      if (g.open) continue;
+      const near = Math.abs(p.pos.x - g.x) < g.hw + p.radius + 0.3 && Math.abs(p.pos.z - g.z) < g.hd + p.radius + 0.3;
+      if (!near) continue;
+      if (p.size !== 1) {
+        if (Math.random() < 0.01) ctx.toast('Only something huge could move these boulders');
+        continue;
+      }
+      g.open = true;
+      grp.clear();
+      const at = new THREE.Vector3(g.x, heightAt(g.x, g.z) + 0.8, g.z);
+      ctx.debris.burst(at, this.plane.palette.rock[0], 40, 7, { size: 0.25, spread: 0.6 });
+      sfx.thud();
+      sfx.spikes();
+      ctx.addShake(0.4);
+      ctx.toast('You smash the boulders aside');
     }
   }
 
@@ -463,9 +518,12 @@ export class Campaign {
     }
     // Finishing a plane's main missions earns the next rank, which opens the next plane.
     const next = this.plane.index;
-    if (o.main && this.allMainDone && rank === next - 1) {
+    if (o.main && this.allMainDone && next < 9 && rank === next - 1) {
       words += ` ${this.plane.ruler.promotion}`;
       setTimeout(() => this.hooks.promoted(next), 2500);
+    } else if (o.main && this.allMainDone && next === 9) {
+      words += ` ${this.plane.ruler.promotion}`;
+      setTimeout(() => this.hooks.announce('The war camp awaits', 'Reach level 50, then the Hellgate opens on the Tenth Plane'), 2500);
     }
     this.hooks.save();
     return words;
@@ -478,7 +536,7 @@ export class Campaign {
     const run: Running = { offer: o, phase: 'go', fighters: [], target: null, item: null, allies: [], wave: 0, waveTimer: 0, unseen: true };
     this.active = run;
     const spawn = (kind: FighterKind, x: number, z: number, opts?: SpawnOptions) => {
-      const f = this.hooks.spawn(kind, x, z, opts);
+      const f = this.hooks.spawn(this.deepen(kind), x, z, opts);
       run.fighters.push(f);
       return f;
     };
@@ -530,6 +588,18 @@ export class Campaign {
     this.hooks.toast(`Mission: ${o.title}`);
     this.hooks.refreshDialog();
     this.hooks.save();
+  }
+
+  /**
+   * Deeper planes field heavier angels: knights (from the Sixth Plane) in
+   * place of some footsoldiers, and flying seraphs (from the Seventh) in
+   * place of some archers.
+   */
+  private deepen(kind: FighterKind): FighterKind {
+    const i = this.plane.index;
+    if (kind === 'footsoldier' && i >= 6 && Math.random() < 0.45) return 'knight';
+    if (kind === 'archer' && i >= 7 && Math.random() < 0.5) return 'seraph';
+    return kind;
   }
 
   /** A stolen treasure: a crown or a gem, glowing and slowly turning. */
@@ -590,6 +660,7 @@ export class Campaign {
     this.updateChest(dt, ctx);
     this.updateDrops(dt);
     this.updatePortal(dt, ctx);
+    this.updateGates(ctx);
     this.updateAmbient(dt);
     const a = this.active;
     if (!a) return;
@@ -660,7 +731,7 @@ export class Campaign {
       const back = Math.floor(i / 4) * 2.5;
       const x = w.from.x + side.x * across + toward.x * back;
       const z = w.from.z + side.y * across + toward.y * back;
-      const f = this.hooks.spawn(kind, x, z, { alert: true, goal, facing: Math.atan2(-toward.x, -toward.y), label: kind === 'officer' ? `Captain ${captain}` : undefined });
+      const f = this.hooks.spawn(this.deepen(kind), x, z, { alert: true, goal, facing: Math.atan2(-toward.x, -toward.y), label: kind === 'officer' ? `Captain ${captain}` : undefined });
       a.fighters.push(f);
     });
     this.hooks.toast(`Wave ${a.wave} of 3: the angels are coming!`);
@@ -677,7 +748,7 @@ export class Campaign {
       p.respawn = 90;
       const path = [new THREE.Vector3(p.at.x - 7, 0, p.at.z), new THREE.Vector3(p.at.x, 0, p.at.z + 7), new THREE.Vector3(p.at.x + 7, 0, p.at.z), new THREE.Vector3(p.at.x, 0, p.at.z - 7)];
       for (let i = 0; i < 3; i++) {
-        p.fighters.push(this.hooks.spawn(i === 2 ? 'archer' : 'footsoldier', p.at.x - 7 + i, p.at.z, { patrol: path.slice(i).concat(path.slice(0, i)) }));
+        p.fighters.push(this.hooks.spawn(this.deepen(i === 2 ? 'archer' : 'footsoldier'), p.at.x - 7 + i, p.at.z, { patrol: path.slice(i).concat(path.slice(0, i)) }));
       }
     }
   }

@@ -48,6 +48,27 @@ const lavaCells = new Uint8Array(N * N);
 const lavaDist = new Uint8Array(N * N);
 let colliders: Circle[] = [];
 
+/**
+ * A gap in a wall that only some can pass: a crack only a tiny demon fits
+ * through, or rubble only a huge one can smash. Axis-aligned box by center
+ * and half sizes.
+ */
+export interface Gate {
+  kind: 'crack' | 'rubble';
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+  /** Rubble that's been smashed. */
+  open: boolean;
+}
+let gates: Gate[] = [];
+
+/** The current plane's gates (to draw them and smash rubble). */
+export function planeGates(): Gate[] {
+  return gates;
+}
+
 const cell = (i: number, j: number) => j * N + i;
 const inside = (i: number, j: number) => i >= 0 && j >= 0 && i < N && j < N;
 
@@ -82,10 +103,10 @@ function blocked(x: number, z: number, r: number, maxTop: number) {
 
 /**
  * Moves a body sideways by (dx, dz), sliding along walls of blocks taller
- * than `step` above its feet, and out of trees and posts.
- * Returns true if it ran into something.
+ * than `step` above its feet, and out of trees, posts and gates. A `tiny`
+ * body slips through cracks. Returns true if it ran into something.
  */
-export function moveBody(pos: THREE.Vector3, dx: number, dz: number, r: number, step: number): boolean {
+export function moveBody(pos: THREE.Vector3, dx: number, dz: number, r: number, step: number, tiny = false): boolean {
   const maxTop = pos.y + step;
   let bumped = false;
   if (dx !== 0) {
@@ -115,6 +136,27 @@ export function moveBody(pos: THREE.Vector3, dx: number, dz: number, r: number, 
       pos.x += (ox / d) * (min - d);
       pos.z += (oz / d) * (min - d);
       bumped = true;
+    }
+  }
+  for (const g of gates) {
+    if (g.open || (g.kind === 'crack' && tiny)) continue;
+    const cx = clamp(pos.x, g.x - g.hw, g.x + g.hw);
+    const cz = clamp(pos.z, g.z - g.hd, g.z + g.hd);
+    const ox = pos.x - cx;
+    const oz = pos.z - cz;
+    const d2 = ox * ox + oz * oz;
+    if (d2 > r * r) continue;
+    bumped = true;
+    if (d2 > 1e-8) {
+      const d = Math.sqrt(d2);
+      pos.x += (ox / d) * (r - d);
+      pos.z += (oz / d) * (r - d);
+    } else {
+      // Inside the box: push out the shallow way.
+      const px = g.hw + r - Math.abs(pos.x - g.x);
+      const pz = g.hd + r - Math.abs(pos.z - g.z);
+      if (px < pz) pos.x += Math.sign(pos.x - g.x || 1) * px;
+      else pos.z += Math.sign(pos.z - g.z || 1) * pz;
     }
   }
   const edge = HALF - 1;
@@ -208,8 +250,46 @@ function buildPortalFloor() {
   fill(x - 2, z - 1, x + 2, z + 1, 1, Kind.Lair);
 }
 
-/** The treasure pillar: three blocks taller than anything around it, right beside a geyser. */
+/**
+ * A locked treasure: a ring of tall walls around the chest, with one way
+ * in on the south side, closed by a crack (tiny demons only) or rubble
+ * (huge demons smash it).
+ */
+function buildTreasureVault(kind: 'crack' | 'rubble') {
+  const t = plane().treasure;
+  const tx = Math.floor(t.x);
+  const tz = Math.floor(t.z);
+  const floor = heights[cell(tx + HALF, tz + HALF)];
+  // Level the inside, then wall it in (3 cells out from the chest).
+  for (let z = tz - 2; z <= tz + 2; z++) for (let x = tx - 2; x <= tx + 2; x++) fill(x, z, x, z, floor, Kind.Rock);
+  for (let z = tz - 3; z <= tz + 3; z++) {
+    for (let x = tx - 3; x <= tx + 3; x++) {
+      if (Math.max(Math.abs(x - tx), Math.abs(z - tz)) !== 3) continue;
+      fill(x, z, x, z, floor + 5, Kind.Spire);
+    }
+  }
+  // The way in, on the south wall: a narrow crack, or a doorway wide enough for
+  // a huge demon (heaped with rubble). A path leads up to it.
+  const w = kind === 'rubble' ? 1 : 0;
+  fill(tx - w, tz - 3, tx + w, tz - 3, floor, Kind.Rock);
+  fill(tx - w, tz - 6, tx + w, tz - 4, floor, Kind.Rock);
+  // Stairs down (or up) to the ground, one block at a time, so anyone can get there.
+  for (let k = 1; k <= 10; k++) {
+    const c = cell(tx + HALF, tz - 6 - k + HALF);
+    const target = floor + Math.sign(heights[c] - floor) * k;
+    if (Math.abs(heights[c] - floor) <= k) break;
+    fill(tx - w, tz - 6 - k, tx + w, tz - 6 - k, target, Kind.Rock);
+  }
+  gates.push({ kind, x: tx + 0.5, z: tz - 2.5, hw: w + 0.5, hd: 0.5, open: false });
+}
+
+/** The treasure pillar: taller than anything around it, right beside a geyser (or, in the sky, too tall for anything but wings). */
 function buildTreasurePillar() {
+  const lock = plane().treasureLock;
+  if (lock === 'crack' || lock === 'rubble') {
+    buildTreasureVault(lock);
+    return;
+  }
   const TREASURE = plane().treasure;
   const TREASURE_GEYSER = plane().treasureGeyser;
   const tx = Math.floor(TREASURE.x);
@@ -223,7 +303,7 @@ function buildTreasurePillar() {
       heights[c] = Math.min(heights[c], base + 1);
     }
   }
-  fill(tx - 1, tz - 1, tx + 1, tz + 1, base + 3, Kind.Spire);
+  fill(tx - 1, tz - 1, tx + 1, tz + 1, base + (lock === 'sky' ? 14 : 3), Kind.Spire);
 }
 
 /** Distance from a point to the line segment a-b. */
@@ -311,7 +391,12 @@ function generateTerrain() {
 
       const river = riverDistance(x, z);
       let isLava = false;
-      if (river.d < river.half) {
+      // A sea of fire: everything that isn't an island, a causeway or a flattened zone is liquid.
+      const sea = p.terrain.sea && !nearFlat(x, z, 0) && !p.mesas.some(([mx, mz, mr, mh]) => Math.hypot(x - mx, z - mz) < mr + mh - 1) && !p.causeways?.some(([ax, az, bx, bz]) => distToSegment(x, z, { x: ax, z: az }, { x: bx, z: bz }) < 1.6);
+      if (sea && edge <= HALF - 12) {
+        isLava = true;
+        h = BED;
+      } else if (river.d < river.half) {
         if (river.bridge) {
           h = 0;
           kind = Kind.Rock;
@@ -320,9 +405,12 @@ function generateTerrain() {
           h = BED;
         }
       } else if (river.d < river.half + 2.5) {
-        // Scorched shore, sloping down to the lava.
+        // Scorched shore, sloping down to the liquid.
         h = Math.min(h, river.d < river.half + 1.2 ? 0 : 1);
         kind = rand() < 0.18 && river.d < river.half + 1.2 ? Kind.Vent : Kind.Rock;
+      } else if (river.d < river.half + 9) {
+        // Higher ground steps down to the shore a block at a time, so it can always be climbed.
+        h = Math.min(h, Math.floor(river.d - river.half - 0.5));
       }
 
       const c = cell(i, j);
@@ -702,6 +790,33 @@ function addScenery(root: THREE.Object3D, rand: () => number) {
     }
   }
 
+  const chains: number[][] = [];
+  const posts: number[][] = [];
+  for (let n = 0; n < (p.scenery.chains ?? 0) * 3; n++) {
+    if (posts.length >= (p.scenery.chains ?? 0) * 2 * 3) break;
+    const x = (rand() * 2 - 1) * (HALF - 18);
+    const z = (rand() * 2 - 1) * (HALF - 18);
+    const a = rand() * Math.PI;
+    const len = 8 + rand() * 6;
+    const bx = x + Math.cos(a) * len;
+    const bz = z + Math.sin(a) * len;
+    if (!open(x, z) || !open(bx, bz)) continue;
+    const ya = heightAt(x, z);
+    const yb = heightAt(bx, bz);
+    const top = Math.max(ya, yb) + 6;
+    // Two iron posts, and a heavy chain sagging between their tops.
+    for (const [px, pz, py] of [[x, z, ya], [bx, bz, yb]]) {
+      posts.push([0.5, top - py + 0.6, 0.5, px, (top + py) / 2 + 0.3, pz]);
+      addCollider({ x: px, z: pz, r: 0.35 });
+    }
+    const links = Math.round(len / 0.4);
+    for (let k = 0; k <= links; k++) {
+      const t = k / links;
+      const sag = Math.sin(t * Math.PI) * 2.2;
+      chains.push([0.42, k % 2 ? 0.08 : 0.2, k % 2 ? 0.2 : 0.08, x + (bx - x) * t, top - sag, z + (bz - z) * t, -a]);
+    }
+  }
+
   const cr = p.scenery.crystals;
   for (let n = 0; cr && n < cr.count; n++) {
     const x = (rand() * 2 - 1) * (HALF - 14);
@@ -718,6 +833,8 @@ function addScenery(root: THREE.Object3D, rand: () => number) {
   if (trunks.length) root.add(boxes(trunks, new THREE.MeshLambertMaterial({ color: trees!.color, flatShading: true })));
   if (moss.length) root.add(boxes(moss, new THREE.MeshLambertMaterial({ color: 0x5a6a20, flatShading: true })));
   if (bones.length) root.add(boxes(bones, new THREE.MeshLambertMaterial({ color: 0xd6cbb0, flatShading: true })));
+  if (posts.length) root.add(boxes(posts, new THREE.MeshLambertMaterial({ color: 0x2a2424, flatShading: true })));
+  if (chains.length) root.add(boxes(chains, new THREE.MeshLambertMaterial({ color: 0x4a4440, flatShading: true })));
   if (crystals.length) {
     const c = new THREE.Color(cr!.color);
     root.add(boxes(crystals, new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.5), flatShading: true })));
@@ -796,6 +913,7 @@ export function createWorld(scene: THREE.Scene, root: THREE.Object3D) {
   const p = plane();
   const rand = mulberry32(p.seed + 1000);
   colliders = [];
+  gates = [];
   generateTerrain();
 
   const horizon = new THREE.Color(p.sky.horizon);

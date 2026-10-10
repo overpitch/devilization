@@ -550,6 +550,38 @@ export const sfx = {
     tone(a, 'sine', 110, 80, t, 0.25).connect(envelope(a, t, 0.3, 0.005, 0.25));
   },
 
+  /** Changing size: a deep swell when growing, a sharp rising whine when shrinking. */
+  resize(grow: boolean) {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime;
+    const o = grow ? tone(a, 'sawtooth', 220, 55, t, 0.5) : tone(a, 'sawtooth', 110, 660, t, 0.4);
+    o.connect(filter(a, 'lowpass', grow ? 600 : 2400, 2)).connect(envelope(a, t, 0.3, 0.03, 0.45));
+    noiseSource(a, t, 0.4).connect(filter(a, 'bandpass', grow ? 300 : 2000, 1)).connect(envelope(a, t, 0.15, 0.05, 0.35));
+  },
+
+  /** A beat of great leathery wings. */
+  wings(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    const f = filter(a, 'lowpass', 500, 1);
+    f.frequency.setValueAtTime(800, t);
+    f.frequency.exponentialRampToValueAtTime(200, t + 0.3);
+    noiseSource(a, t, 0.35).connect(f).connect(envelope(a, t, 0.5 * vol, 0.04, 0.3));
+  },
+
+  /** A blow ringing off a knight's shield. */
+  clang(vol = 1) {
+    const a = ready();
+    if (!a || vol < 0.03) return;
+    const t = a.currentTime;
+    [880, 1318, 2093, 2794].forEach((f, i) => {
+      tone(a, 'triangle', f, f * 0.99, t, 0.5).connect(envelope(a, t, (0.2 / (i + 1)) * vol, 0.002, 0.5 - i * 0.08));
+    });
+    noiseSource(a, t, 0.06).connect(filter(a, 'highpass', 3000)).connect(envelope(a, t, 0.3 * vol, 0.002, 0.05));
+  },
+
   click() {
     const a = ready();
     if (!a) return;

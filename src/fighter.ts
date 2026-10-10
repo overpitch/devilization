@@ -12,7 +12,7 @@ import type { Foe, GameContext, HellBody } from './types';
  */
 
 export type Side = 'heaven' | 'hell';
-export type FighterKind = 'footsoldier' | 'archer' | 'priest' | 'officer' | 'traitor' | 'imp';
+export type FighterKind = 'footsoldier' | 'archer' | 'priest' | 'officer' | 'knight' | 'seraph' | 'traitor' | 'imp';
 
 interface KindDef {
   side: Side;
@@ -39,6 +39,10 @@ interface KindDef {
   weapon: WeaponModel | null;
   shield?: boolean;
   wings?: boolean;
+  /** Holds a shield up: blows from the front do less than half. */
+  blocks?: boolean;
+  /** Flies above the ground and dives on its target. */
+  flies?: boolean;
   halo?: number;
   horns?: number;
   cape?: number;
@@ -84,6 +88,20 @@ const KINDS: Record<FighterKind, KindDef> = {
     look: { skin: 0x8a2018, shirt: 0x2a2228, pants: 0x1a1418, boots: 0x101010, eyes: 0xfff2b0, glowingEyes: true, belt: 0xd9b24a, armor: 0x2a2228 },
     weapon: 'axe', horns: 0x1a1210, cape: 0xf0ece2, halo: 0xb8a060,
   },
+  knight: {
+    side: 'heaven', name: 'Angel knight', hp: 130, speed: 3.4, radius: 0.5, scale: 1.15,
+    attack: 'melee', damage: 14, reach: 1.4, windup: 0.7, recover: 0.5, cooldown: 1.3, keepAway: 0, sight: 20,
+    xp: 40, gold: ANGEL_GOLD, drop: { id: 'sword', chance: 0.5, minQuality: 1, enchantChance: 0.1 },
+    look: { skin: ANGEL_SKIN, shirt: 0xb8bcc8, pants: 0x9a9ea8, boots: 0x7a7e88, eyes: 0x7ac0ff, glowingEyes: true, belt: 0xd9b24a, armor: 0xd8dce4, plume: 0xd9b24a },
+    weapon: 'sword', shield: true, wings: true, halo: 0xffe27a, blocks: true,
+  },
+  seraph: {
+    side: 'heaven', name: 'Seraph', hp: 60, speed: 6.5, radius: 0.45, scale: 1.05,
+    attack: 'melee', damage: 12, reach: 1.3, windup: 0.55, recover: 0.5, cooldown: 1.6, keepAway: 0, sight: 30,
+    xp: 35, gold: ANGEL_GOLD,
+    look: { skin: ANGEL_SKIN, shirt: 0xfff4d8, pants: 0xf0e6c8, boots: 0xd9b24a, eyes: 0xffe27a, glowingEyes: true, belt: 0xd9b24a, armor: 0xffe9a8 },
+    weapon: 'spear', wings: true, halo: 0xfff4c0, flies: true,
+  },
   imp: {
     side: 'hell', name: 'Imp', hp: 80, speed: 5, radius: 0.38, scale: 0.8,
     attack: 'melee', damage: 11, reach: 1.3, windup: 0.4, recover: 0.35, cooldown: 1.0, keepAway: 0, sight: 30,
@@ -116,7 +134,7 @@ export interface SpawnOptions {
   alert?: boolean;
   /** Where it heads once alert, if nobody is in sight (an attack wave's objective). */
   goal?: THREE.Vector3;
-  /** Deeper planes' angels are stronger: health and XP times this, damage a little less. */
+  /** Deeper planes' angels are stronger: health, damage and XP times this. */
   power?: number;
 }
 
@@ -188,7 +206,7 @@ export class Fighter implements Foe, HellBody {
     this.side = def.side;
     this.radius = def.radius;
     this.power = opts.power ?? 1;
-    this.damageMult = 1 + (this.power - 1) * 0.75;
+    this.damageMult = this.power;
     this.hp = this.maxHp = Math.round(def.hp * this.power);
     this.label = opts.label ?? null;
     this.pos.set(x, groundAt(x, z, 0.3), z);
@@ -331,6 +349,13 @@ export class Fighter implements Foe, HellBody {
 
   takeHit(damage: number, dir: THREE.Vector3, knockback: number, ctx: GameContext) {
     if (!this.alive) return;
+    // A knight's shield catches blows from the front.
+    if (this.def.blocks && this.state === 'alert' && dir.x * Math.sin(this.yaw) + dir.z * Math.cos(this.yaw) < -0.35) {
+      damage *= 0.45;
+      knockback *= 0.3;
+      ctx.fire.burst(this.chest(), 0xfff2c0, 10, 4, { dir: dir.clone().negate(), life: 0.25, size: 0.06 });
+      sfx.clang(volumeAt(this.pos.distanceTo(ctx.player.pos)));
+    }
     this.flash = 1;
     this.kb.addScaledVector(dir, knockback * 0.9);
     const chest = this.chest();
@@ -489,8 +514,8 @@ export class Fighter implements Foe, HellBody {
     const dx = p.pos.x - this.pos.x;
     const dz = p.pos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
-    const range = this.def.sight * (p.sneaking ? 0.4 : 1);
-    const near = p.sneaking ? 1.4 : 3.5;
+    const range = this.def.sight * (p.sneaking ? 0.4 : 1) * p.visibility;
+    const near = (p.sneaking ? 1.4 : 3.5) * (p.size === -1 ? 0.5 : 1);
     let seen = false;
     if (dist < near) seen = true;
     else if (dist < range && Math.abs(wrapAngle(Math.atan2(dx, dz) - this.yaw)) < 1.05 && this.lineOfSight(p.pos)) seen = true;
@@ -681,7 +706,7 @@ export class Fighter implements Foe, HellBody {
     if (def.attack === 'melee') {
       sfx.angelSwing(vol);
       const facing = Math.abs(wrapAngle(Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z) - this.yaw)) < 1.3;
-      if (edge < def.reach + 0.4 && facing) t.takeDamage(def.damage * this.damageMult, ctx, { attacker: this });
+      if (edge < def.reach + 0.4 && facing && Math.abs(t.pos.y - this.pos.y) < 2.4) t.takeDamage(def.damage * this.damageMult, ctx, { attacker: this });
     } else if (def.attack === 'bow') {
       sfx.bowShot(vol);
       ctx.projectiles.fire('arrow', chest, tmp.set(t.pos.x, t.pos.y + 1.2, t.pos.z), def.damage * this.damageMult, t);
@@ -711,8 +736,30 @@ export class Fighter implements Foe, HellBody {
     return best;
   }
 
+  /** Height above the ground a flying fighter keeps. */
+  private alt = 4.5;
+
+  /** Flies over everything at a hover, dropping down to strike. */
+  private flyMove(dt: number, vx: number, vz: number) {
+    this.moving += (Math.min(Math.hypot(vx, vz) / this.def.speed, 1) - this.moving) * Math.min(1, dt * 8);
+    vx += this.kb.x;
+    vz += this.kb.z;
+    this.kb.multiplyScalar(Math.max(0, 1 - dt * 6));
+    moveBody(this.pos, vx * dt, vz * dt, this.radius * 0.8, 99);
+    const ground = groundAt(this.pos.x, this.pos.z, this.radius * 0.6);
+    // Diving: down to the target's height during the windup.
+    const t = this.target;
+    const want = this.action === 'windup' && t ? Math.max(0.4, t.pos.y - ground + 0.3) : this.impaled > 0 ? 0 : 4.5;
+    this.alt += (want - this.alt) * Math.min(1, dt * (this.action === 'windup' ? 6 : 2));
+    this.pos.y = ground + this.alt;
+  }
+
   /** Walks, steering around lava (it burns angels), with knockback and gravity. */
   private move(dt: number, vx: number, vz: number) {
+    if (this.def.flies) {
+      this.flyMove(dt, vx, vz);
+      return;
+    }
     const speed = Math.hypot(vx, vz);
     if (speed > 0.01) {
       let angle = Math.atan2(vx, vz);
@@ -822,7 +869,8 @@ export class Fighter implements Foe, HellBody {
     for (const [i, w] of this.wings.entries()) {
       const side = i === 0 ? 1 : -1;
       const spread = this.state === 'alert' ? 0.9 + Math.sin(this.gait * 1.5) * 0.15 : 0.35;
-      w.rotation.set(0.15, -spread * side, -0.3 * side);
+      if (this.def.flies) w.rotation.set(0.1, (-1.1 + Math.sin(this.gait * 3 + i) * 0.5) * side, -0.2 * side);
+      else w.rotation.set(0.15, -spread * side, -0.3 * side);
     }
 
     const tell = this.action === 'windup' ? 0.5 * t : 0;

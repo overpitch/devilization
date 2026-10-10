@@ -39,6 +39,23 @@ const ENERGY_REGEN = 16;
 const ENERGY_REGEN_DELAY = 0.7;
 
 const SNEAK_SPEED = 3.2;
+
+/** Your three sizes (level 30): how each changes you. */
+export type Size = -1 | 0 | 1;
+const SIZES = {
+  [-1]: { name: 'Tiny', scale: 0.45, radius: 0.22, speed: 1.25, damage: 0.6, reach: -0.6, hurt: 1.2, step: 1.05 },
+  [0]: { name: 'Normal', scale: 1, radius: 0.4, speed: 1, damage: 1, reach: 0, hurt: 1, step: 1.05 },
+  [1]: { name: 'Huge', scale: 1.6, radius: 0.62, speed: 0.85, damage: 1.35, reach: 0.8, hurt: 0.8, step: 2.05 },
+} as const;
+
+/** Flight (level 40). */
+const FLY_SPEED = 10;
+const FLY_SPRINT = 14;
+const FLY_CLIMB = 7;
+/** Highest you can fly above the ground below you. */
+const FLY_CEILING = 30;
+/** Two taps of Space this close together take off. */
+const DOUBLE_TAP = 0.3;
 /** Eye height while sneaking. */
 const SNEAK_EYE = 1.3;
 
@@ -63,8 +80,13 @@ export class Player {
   spikeCooldown = 0;
 
   readonly pos = new THREE.Vector3();
-  readonly radius = 0.4;
-  readonly eyeHeight = 1.85;
+  /** -1 tiny, 0 normal, 1 huge (from level 30). */
+  size: Size = 0;
+  /** Smoothly follows the size's scale, for the camera and collisions. */
+  scale = 1;
+  /** Flying (from level 40): double-tap Space. */
+  flying = false;
+  private lastSpaceTap = -99;
   maxHp = 100;
   hp = 100;
   alive = true;
@@ -121,6 +143,25 @@ export class Player {
   onLand?: (speed: number) => void;
   /** A silent kill from behind. */
   onAssassinate?: (foe: Foe) => void;
+
+  /** How wide you are (grows and shrinks with your size). */
+  get radius() {
+    return SIZES[this.size].radius;
+  }
+
+  /** How high your eyes are when standing. */
+  get eyeHeight() {
+    return 1.85 * this.scale;
+  }
+
+  get sizeName() {
+    return SIZES[this.size].name;
+  }
+
+  /** How much easier you are to spot (angels see a huge demon from further, a tiny one barely at all). */
+  get visibility() {
+    return this.size === -1 ? 0.35 : this.size === 1 ? 1.4 : 1;
+  }
 
   get weapon(): Weapon {
     return this.weapons[this.equipped] ?? STARTING_WEAPON;
@@ -218,6 +259,7 @@ export class Player {
     this.hurtFlash = 0;
     this.sinceHurt = 99;
     this.lastTarget = null;
+    this.flying = false;
   }
 
   /** Eye position for the camera. */
@@ -228,7 +270,7 @@ export class Player {
       out.y += Math.max(0.35, this.eyeHeight * (1 - this.deadTime * 1.6));
       return out;
     }
-    out.y += this.eyeHeight - (this.eyeHeight - SNEAK_EYE) * this.crouch + this.eyeLag;
+    out.y += this.eyeHeight - (this.eyeHeight - SNEAK_EYE * this.scale) * this.crouch + this.eyeLag;
     return out;
   }
 
@@ -253,12 +295,25 @@ export class Player {
       return;
     }
 
+    // ----- Size (Z smaller, X bigger) and flight (double-tap Space) -----
+    this.updateSize(input, ctx);
+    this.scale += (SIZES[this.size].scale - this.scale) * smoothing(8, dt);
+    if (input.jumpPressed) {
+      if (this.time - this.lastSpaceTap < DOUBLE_TAP) {
+        if (this.level < UNLOCK.flight) ctx.toast(`Flight unlocks at level ${UNLOCK.flight}`);
+        else this.setFlying(!this.flying, ctx);
+        this.lastSpaceTap = -99;
+      } else this.lastSpaceTap = this.time;
+    }
+
     // ----- Moving -----
     const move = input.moveVector();
-    this.sneaking = input.sneakHeld && this.grounded;
+    this.sneaking = input.sneakHeld && this.grounded && !this.flying;
     this.crouch += ((this.sneaking ? 1 : 0) - this.crouch) * smoothing(10, dt);
     this.sprinting = input.sprintHeld && move.z > 0.3 && !this.swing && !this.sneaking;
     let speed = this.sneaking ? SNEAK_SPEED : this.sprinting ? SPRINT_SPEED : WALK_SPEED;
+    if (this.flying) speed = this.sprinting ? FLY_SPRINT : FLY_SPEED;
+    else speed *= SIZES[this.size].speed;
     if (this.armor?.enchant === 'swift') speed *= 1.15;
     if (this.swing || this.breathing) speed *= 0.75;
     if (this.inLava) speed *= LAVA_SLOW;
@@ -267,17 +322,22 @@ export class Player {
     const rightZ = fwd.x;
     const wishX = (fwd.x * move.z + rightX * move.x) * speed;
     const wishZ = (fwd.z * move.z + rightZ * move.x) * speed;
-    // Quick to respond on the ground; drifting in the air.
-    const grip = smoothing(this.grounded ? 14 : 4, dt);
+    // Quick to respond on the ground (and on wings); drifting in a jump.
+    const grip = smoothing(this.grounded || this.flying ? 14 : 4, dt);
     this.vel.x += (wishX - this.vel.x) * grip;
     this.vel.z += (wishZ - this.vel.z) * grip;
-    moveBody(this.pos, this.vel.x * dt, this.vel.z * dt, this.radius, this.grounded ? STEP_UP : 0.25);
+    const step = this.grounded ? Math.max(STEP_UP, SIZES[this.size].step) : 0.25;
+    moveBody(this.pos, this.vel.x * dt, this.vel.z * dt, this.radius, step, this.size === -1);
 
-    if (input.jumpPressed && this.grounded) {
-      this.vel.y = this.inLava ? JUMP_SPEED * 0.8 : JUMP_SPEED;
-      this.grounded = false;
+    if (this.flying) {
+      this.fly(dt, input);
+    } else {
+      if (input.jumpPressed && this.grounded) {
+        this.vel.y = this.inLava ? JUMP_SPEED * 0.8 : JUMP_SPEED;
+        this.grounded = false;
+      }
+      this.applyGravity(dt);
     }
-    this.applyGravity(dt);
 
     // Footsteps and head bob.
     const flatSpeed = Math.hypot(this.vel.x, this.vel.z);
@@ -418,6 +478,60 @@ export class Player {
     this.aiming = false;
   }
 
+  /** Z shrinks, X grows: tiny, normal or huge (from level 30). */
+  private updateSize(input: Input, ctx: GameContext) {
+    const want = input.shrinkPressed ? -1 : input.growPressed ? 1 : 0;
+    if (want === 0) return;
+    if (this.level < UNLOCK.size) {
+      ctx.toast(`Changing size unlocks at level ${UNLOCK.size}`);
+      return;
+    }
+    const next = Math.max(-1, Math.min(1, this.size + want)) as Size;
+    if (next === this.size) return;
+    // No growing where there isn't room.
+    if (next > this.size && groundAt(this.pos.x, this.pos.z, SIZES[next].radius) > this.pos.y + SIZES[next].step) {
+      ctx.toast('No room to grow here');
+      return;
+    }
+    this.size = next;
+    sfx.resize(next > 0 || (next === 0 && want > 0));
+    ctx.fire.burst(tmp.set(this.pos.x, this.pos.y + 1 * this.scale, this.pos.z), 0xff4010, 25, 4, { gravity: -2, life: 0.6, size: 0.12, spread: 0.6 });
+  }
+
+  /** Takes off or lands. */
+  private setFlying(on: boolean, ctx: GameContext) {
+    this.flying = on;
+    this.grounded = false;
+    this.vel.y = on ? 4 : 0;
+    sfx.wings();
+    if (on) ctx.fire.burst(tmp.copy(this.pos), 0x6a3a30, 20, 4, { size: 0.12 });
+  }
+
+  /** On wings: hold Space to climb, C to sink. Touch down and you land. */
+  private fly(dt: number, input: Input) {
+    const climb = (input.isDown('Space') ? 1 : 0) - (input.sneakHeld ? 1 : 0);
+    this.vel.y += (climb * FLY_CLIMB - this.vel.y) * smoothing(6, dt);
+    const ground = groundAt(this.pos.x, this.pos.z, this.radius * 0.7);
+    this.pos.y = Math.min(this.pos.y + this.vel.y * dt, ground + FLY_CEILING);
+    this.grounded = false;
+    this.flapTimer -= dt;
+    if (this.flapTimer <= 0) {
+      this.flapTimer = 0.55;
+      sfx.wings(0.4);
+    }
+    if (this.pos.y <= ground) {
+      this.pos.y = ground;
+      if (climb < 0 || this.vel.y <= 0) {
+        this.flying = false;
+        this.grounded = true;
+        this.vel.y = 0;
+        sfx.land(0.5);
+      }
+    }
+  }
+
+  private flapTimer = 0;
+
   private applyGravity(dt: number) {
     const ground = groundAt(this.pos.x, this.pos.z, this.radius * 0.7);
     this.eyeLag *= 1 - smoothing(14, dt);
@@ -515,7 +629,7 @@ export class Player {
       const dz = a.pos.z - this.pos.z;
       const dy = a.pos.y - this.pos.y;
       const dist = Math.hypot(dx, dz);
-      if (dist > def.reach + a.radius || dy < -2 || dy > 3) continue;
+      if (dist > def.reach + SIZES[this.size].reach + a.radius || dy < -2 || dy > 3 * this.scale) continue;
       if (Math.abs(wrapAngle(Math.atan2(dx, dz) - cam.yaw)) > def.arc && dist > a.radius + 0.6) continue;
       this.hitFoe(a, def.damage, tmp.set(dx, 0, dz).normalize(), def.knockback, def.heavy, weapon, ctx);
       struck.add(a);
@@ -550,7 +664,7 @@ export class Player {
 
   /** Damages a foe with a weapon: quality, level, a little luck, and the weapon's enchantment. */
   private hitFoe(a: Foe, base: number, dir: THREE.Vector3, knockback: number, heavy: boolean, weapon: Weapon, ctx: GameContext) {
-    const damage = Math.round(base * qualityMult(weapon) * this.damageMult * (0.85 + Math.random() * 0.3));
+    const damage = Math.round(base * qualityMult(weapon) * this.damageMult * SIZES[this.size].damage * (0.85 + Math.random() * 0.3));
     a.takeHit(damage, dir, knockback, ctx);
     ctx.floatText(new THREE.Vector3(a.pos.x, a.pos.y + 2.3, a.pos.z), String(damage), heavy ? 'heavy' : 'damage');
     if (weapon.enchant === 'flame') a.burn(0, 6 * this.damageMult, ctx);
@@ -602,7 +716,7 @@ export class Player {
   /** Damage from an attack. Lava and fire never call this: they can't hurt a demon. */
   takeDamage(amount: number, ctx: GameContext, source?: DamageSource) {
     if (!this.alive) return;
-    amount *= 1 - this.armorReduction;
+    amount *= (1 - this.armorReduction) * SIZES[this.size].hurt;
     if (source?.holy && this.armor?.enchant === 'ward') amount *= 0.6;
     // Thorns: whoever strikes you up close gets hurt too.
     const attacker = source?.attacker;

@@ -1,6 +1,6 @@
 /**
  * Levels, ranks and powers. Level comes from XP and unlocks powers; rank is
- * a promotion from the plane rulers (missions arrive in milestone 3).
+ * a promotion from the plane rulers (missions arrive in phase 3).
  *
  * The XP curve totals about 61,000 XP from level 1 to 50, to be spread over
  * a 3–5 hour playthrough once missions and real angels give XP.

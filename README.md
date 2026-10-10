@@ -22,6 +22,8 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 | Ground spikes (from level 15) | Hold `R` to aim, let go to strike |
 | Talk, take, open | `E` |
 | Sneak (kill unaware enemies from behind with a click) | Hold `C` |
+| Shrink / grow (from level 30) | `Z` / `X` |
+| Take off or land (from level 40) | Tap `Space` twice; hold `Space` to climb, `C` to sink |
 | Switch weapon | `1`–`4`, or `Q` for the next one |
 | Jump | `Space` |
 | Sprint | `Shift` |
@@ -29,7 +31,20 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 
 ## What's in so far
 
-### Milestone 5
+### Phase 6
+
+- **Change size** (level 30): Z shrinks, X grows. **Tiny** is fast and nearly invisible to angels and fits through cracks, but hits weakly and gets hurt more. **Huge** hits harder and further, takes less damage and climbs 2-block ledges, but is slower and easy to spot, and smashes rubble by walking into it.
+- **Flight** (level 40): tap Space twice to take off or land; hold Space to climb and C to sink. Wings beat at the edges of the screen.
+- **New angels:** **knights** hold up shields that stop more than half of any blow from the front, and **seraphs** fly over everything and dive down to strike (only bows, javelins, fire and spikes reach them up there).
+- **Four more planes:**
+  - **The Chain Canyons** (suggested level 25): rust-red canyons with lava below and great chains strung between iron posts. Ruled by **Furcas**. The treasure is walled in behind a crack only a tiny demon fits through.
+  - **Frozen Hell** (level 30): snow, ice crystals, black freezing lakes, and frost geysers. Ruled by **Belial**. The treasure is behind boulders only a huge demon can smash.
+  - **The Burning Sky** (level 35): islands in a sea of fire joined by land bridges. Ruled by **Phenex**. The treasure sits on a spire only wings can reach.
+  - **The Abyss** (level 40): darkness, purple crystals and a river of void. Ruled by **Leviathan**. The treasure is behind another crack.
+- Finishing the Abyss opens the way to the angels' war camp (the Tenth Plane) once you reach level 50, which comes in phase 7.
+- **Balance:** angels on each plane now roughly match how strong you are at its suggested level.
+
+### Phase 5
 
 - **The Hellgate** stands beside every ruler's lair. Press E at it to travel to any plane your rank has opened, deeper or back up.
 - **Promotions:** finish a plane's three main missions and its ruler raises your rank, which opens the next plane: Imp → Fiend → Hellguard → Pit Captain → Hellknight → Warlord.
@@ -41,7 +56,7 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 - **Angels get stronger** deeper down (more health, harder hits, more XP). Gold stays at 10 per angel everywhere. Missions and chests pay more on deeper planes.
 - Your progress on every plane is saved, and you're back on the plane you left when you continue.
 
-### Milestone 4
+### Phase 4
 
 - **The Armory** (pause menu): a weaponsmith, an armorer, and *Your gear*, where you sell what you carry. Enchanted stock changes after every mission you finish.
 - **New weapons:** the Brimstone Hammer (very slow; its overhead blow sends a shockwave through everyone nearby), the Reaper's Scythe (huge sweeps), the Longbow (burning arrows) and Hell Javelins (heavy thrown spears; another is always at hand). The axe is now the Hellforged Axe.
@@ -52,7 +67,7 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 - **Drops:** archers sometimes drop longbows; captains sometimes drop enchanted spears; the treasure chest now holds an enchanted weapon.
 - **Natural armor** at level 50: 15% less damage from everything, on top of worn armor.
 
-### Milestone 3
+### Phase 3
 
 - **Malphas's lair:** you arrive (and return when banished) at the foot of Malphas's throne. Press E near him for missions.
 - **Angels that fight back:** footsoldiers (sword and shield), archers (holy arrows), priests (heal other angels, throw bolts of light) and captains. Lava and geysers burn them; they steer around lava.
@@ -67,7 +82,7 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 - **Return to the lair:** from the pause menu, when no mission is running and nothing is fighting you.
 - **Objective marker** on screen, and a prompt for anything you can use with E.
 
-### Milestone 2
+### Phase 2
 
 - **Names:** name your demon and your hellhound, with a short intro.
 - **Levels 1–50:** XP from kills; each level raises health, hellfire and damage, and fully heals you. Leveling up has its own fanfare and announces any new power.
@@ -79,7 +94,7 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 - **Saving:** progress is saved in the browser (on level-up, when you pause or quit, and every 20 seconds). You keep everything when you die.
 - **HUD:** name, rank, level, dog's name, health, hellfire, XP, gold, and power slots that show when each power unlocks.
 
-### Milestone 1
+### Phase 1
 
 - **The first plane:** a blocky plain with rivers of lava, fire geysers, obsidian spires, dead trees and bones, ringed by cliffs. Basalt bridges cross the rivers.
 - **Lava:** it can't hurt a demon, but wading through it is slow.

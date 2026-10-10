@@ -15,7 +15,7 @@ export interface SaveData {
   playTime: number;
   weapons: Weapon[];
   equipped: number;
-  /** Worn armor (milestone 4). */
+  /** Worn armor (phase 4). */
   armor: Armor | null;
   /** The plane you're on (1-based). */
   plane: number;
@@ -29,7 +29,7 @@ export interface SaveData {
   savedAt: number;
 }
 
-/** Fields added after milestone 2, with their starting values. */
+/** Fields added after phase 2, with their starting values. */
 const LATER_FIELDS = () => ({ weapons: [{ ...STARTING_WEAPON }], equipped: 0, armor: null as Armor | null, plane: 1, missionsDone: [] as string[], sideDone: 0, chests: [] as number[], talkedPlanes: [] as number[] });
 
 let key = 'devilization.save';
@@ -64,7 +64,7 @@ export function loadSave(): SaveData | null {
     if (save.weapons.length === 0) save.weapons = [{ ...STARTING_WEAPON }];
     if (!(save.equipped >= 0 && save.equipped < save.weapons.length)) save.equipped = 0;
     if (!Array.isArray(save.missionsDone)) save.missionsDone = [];
-    // Milestone 3-4 saves: First Plane missions had no plane prefix, and one chest flag.
+    // Phase 3-4 saves: First Plane missions had no plane prefix, and one chest flag.
     save.missionsDone = save.missionsDone.map((id) => (id.includes(':') ? id : `1:${id}`));
     const old = d as { chestOpened?: boolean; talked?: boolean };
     if (!Array.isArray(save.chests)) save.chests = [];

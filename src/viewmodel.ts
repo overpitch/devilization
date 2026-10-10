@@ -198,6 +198,11 @@ export class ViewModel {
   /** The arrow nocked on the bow. */
   private readonly arrow: THREE.Mesh;
   private readonly bracers: THREE.Mesh[] = [];
+  /** Your wings, seen at the edges of the screen while you fly. */
+  private readonly wings: THREE.Group[] = [];
+  private flap = 0;
+  /** Set each frame: are you flying? */
+  flying = false;
   private armorKey = '';
   private readonly bladeRot = new THREE.Vector3();
   private readonly bladeStart = { hand: new THREE.Vector3(), rot: new THREE.Vector3() };
@@ -288,6 +293,29 @@ export class ViewModel {
     this.arrow.visible = false;
     this.rig.add(this.arrow);
 
+    // Bat-like wings: bony fingers with leathery skin between them.
+    const bone = lambert(0x2a0c08);
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0x5a1410, flatShading: true, side: THREE.DoubleSide });
+    for (const side of [1, -1]) {
+      const wing = new THREE.Group();
+      wing.position.set(0.55 * side, 0.02, -0.45);
+      for (let f = 0; f < 3; f++) {
+        const finger = new THREE.Mesh(box, bone);
+        finger.scale.set(0.05, 0.05, 1.1 - f * 0.2);
+        finger.position.set(0.25 * side + f * 0.12 * side, 0.3 - f * 0.25, -0.45);
+        finger.rotation.set(0.3 + f * 0.25, 0.4 * side, 0);
+        wing.add(finger);
+        const membrane = new THREE.Mesh(box, skinMat);
+        membrane.scale.set(0.02, 0.3, 0.9 - f * 0.2);
+        membrane.position.set(0.25 * side + f * 0.12 * side, 0.17 - f * 0.25, -0.45);
+        membrane.rotation.copy(finger.rotation);
+        wing.add(membrane);
+      }
+      wing.visible = false;
+      this.wings.push(wing);
+      this.rig.add(wing);
+    }
+
     // Armor shows as bracers on the forearms.
     for (let i = 0; i < 2; i++) {
       const b = new THREE.Mesh(box, new THREE.MeshLambertMaterial({ flatShading: true }));
@@ -367,6 +395,13 @@ export class ViewModel {
     this.rig.updateMatrixWorld();
     this.show(weapon);
     this.wear(armor);
+    // Wings beat while you fly.
+    this.flap += dt * 7;
+    this.wings.forEach((w, i) => {
+      const side = i === 0 ? 1 : -1;
+      w.visible = this.flying;
+      w.rotation.set(0, 0, (Math.sin(this.flap) * 0.35 - 0.1) * side);
+    });
 
     // The arms lag a little behind fast turns.
     this.sway.x = clamp(this.sway.x * (1 - smoothing(10, dt)) - lookDelta.x * 0.0004, -0.08, 0.08);

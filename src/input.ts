@@ -90,6 +90,14 @@ export class Input {
     return this.isDown('KeyR');
   }
 
+  get shrinkPressed() {
+    return this.pressed.has('KeyZ');
+  }
+
+  get growPressed() {
+    return this.pressed.has('KeyX');
+  }
+
   get sneakHeld() {
     return this.isDown('KeyC');
   }

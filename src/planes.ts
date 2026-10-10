@@ -53,7 +53,7 @@ export interface PlaneDef {
   title: string;
   /** Suggested level when you arrive. */
   level: number;
-  /** Multiplies angels' health and XP (and, a little less, their damage). */
+  /** Multiplies angels' health, damage and XP. Roughly matches how strong you are at the plane's suggested level. */
   power: number;
   seed: number;
   terrain: {
@@ -67,7 +67,11 @@ export interface PlaneDef {
     boulders: number;
     /** A city of obsidian blocks with streets between. */
     city?: { block: number; street: number; minHeight: number; maxHeight: number };
+    /** A sea of liquid fire: only islands (mesas), causeways and flattened zones stand above it. */
+    sea?: boolean;
   };
+  /** Land bridges across the sea: [x1, z1, x2, z2]. */
+  causeways?: [number, number, number, number][];
   rivers: River[];
   lakes: [number, number, number][];
   mesas: [number, number, number, number][];
@@ -76,6 +80,12 @@ export interface PlaneDef {
   flatZones: [number, number, number][];
   treasure: XZ;
   treasureGeyser: XZ;
+  /**
+   * What stands between you and the treasure: nothing but the geyser
+   * (default), a crack only a tiny demon fits through, rubble only a huge
+   * one can smash, or a pillar so tall only wings reach the top.
+   */
+  treasureLock?: 'crack' | 'rubble' | 'sky';
   /** The liquid in the rivers and lakes (all harmless to demons; it burns angels). */
   liquid: { colors: string[]; glow: [number, number, number]; brightness: number };
   /** Block colors: [top, side, deep]. `spire` is the tall rock; `vent` glows. */
@@ -87,7 +97,7 @@ export interface PlaneDef {
   /** Drifting motes: embers rise, ash falls. */
   motes: { color: number; rise: number; size: number };
   geyserColors: [number, number, number];
-  scenery: { trees?: { count: number; color: number; style: 'dead' | 'bone' | 'swamp' }; bones?: number; crystals?: { count: number; color: number } };
+  scenery: { trees?: { count: number; color: number; style: 'dead' | 'bone' | 'swamp' }; bones?: number; crystals?: { count: number; color: number }; chains?: number };
   ruler: RulerDef;
   missions: {
     war: MissionText & { defend: XZ; from: XZ };
@@ -193,7 +203,7 @@ export const PLANES: PlaneDef[] = [
     name: 'The Second Plane',
     title: 'The Ash Wastes',
     level: 5,
-    power: 1.45,
+    power: 1.25,
     seed: 2717,
     terrain: { base: 1.5, amp: 1.9, freq: 0.6, spires: 22, boulders: 55 },
     rivers: [],
@@ -283,7 +293,7 @@ export const PLANES: PlaneDef[] = [
     name: 'The Third Plane',
     title: 'The Bone Forest',
     level: 10,
-    power: 1.95,
+    power: 1.5,
     seed: 3331,
     terrain: { base: 1, amp: 1.2, freq: 1.1, spires: 0, boulders: 30 },
     rivers: [{ along: 'z', center: (z) => 20 + 6 * Math.sin(z * 0.07), width: (z) => 4 + Math.sin(z * 0.13), from: -HALF, to: HALF, bridges: [-30, 25] }],
@@ -363,7 +373,7 @@ export const PLANES: PlaneDef[] = [
     name: 'The Fourth Plane',
     title: 'The Sulfur Swamps',
     level: 15,
-    power: 2.5,
+    power: 1.8,
     seed: 4441,
     terrain: { base: 1, amp: 0.7, freq: 1.2, spires: 16, boulders: 40 },
     rivers: [{ along: 'x', center: (x) => -4 + 10 * Math.sin(x * 0.05), width: (x) => 5 + Math.sin(x * 0.09), from: -HALF, to: HALF, bridges: [-44, 10, 50] }],
@@ -446,7 +456,7 @@ export const PLANES: PlaneDef[] = [
     name: 'The Fifth Plane',
     title: 'The Obsidian City',
     level: 20,
-    power: 3.1,
+    power: 2.1,
     seed: 5557,
     terrain: { base: 1, amp: 0.3, freq: 1, spires: 0, boulders: 20, city: { block: 9, street: 5, minHeight: 4, maxHeight: 13 } },
     rivers: [
@@ -521,6 +531,355 @@ export const PLANES: PlaneDef[] = [
         praise: 'Without Zarael their legion is just a flock.',
         post: { x: 46, z: -40 },
         target: { kind: 'officer', label: 'Archon Zarael' },
+      },
+    },
+  },
+
+  {
+    index: 6,
+    name: 'The Sixth Plane',
+    title: 'The Chain Canyons',
+    level: 25,
+    power: 2.4,
+    seed: 6661,
+    terrain: { base: 3, amp: 2.2, freq: 0.8, spires: 40, boulders: 40 },
+    rivers: [
+      { along: 'x', center: (x) => 20 + 8 * Math.sin(x * 0.06), width: (x) => 5 + Math.sin(x * 0.1), from: -HALF, to: HALF, bridges: [-40, 0, 40] },
+      { along: 'z', center: (z) => -20 + 6 * Math.sin(z * 0.07), width: () => 4.5, from: -HALF, to: 20, bridges: [-45, -10] },
+    ],
+    lakes: [[50, -45, 6]],
+    mesas: [[55, 42, 8, 6]],
+    geysers: [
+      { x: 14.5, z: -40.5 }, { x: -38.5, z: 4.5 }, { x: 26.5, z: 2.5 }, { x: -6.5, z: 44.5 }, { x: 60.5, z: 12.5 },
+      { x: -58.5, z: 30.5 }, { x: 22.5, z: 56.5 }, { x: -36.5, z: -54.5 },
+    ],
+    flatZones: [
+      [-50, -30, 9],
+      [45, 0, 8],
+      [-45, 50, 7],
+    ],
+    treasure: { x: 40.5, z: -18.5 },
+    treasureGeyser: { x: -52.5, z: 56.5 },
+    treasureLock: 'crack',
+    liquid: LAVA,
+    palette: {
+      ground: [0x6a4030, 0x5a3426, 0x48281c],
+      rock: [0x3e3434, 0x302828, 0x242020],
+      vent: [0x8a2e0c, 0x6a220a, 0x4a1a0a],
+      spire: [0x2a2426, 0x221c1e, 0x1a1618],
+      cliff: [0x5a3020, 0x4a281a, 0x3a2014],
+      spireGlow: 0,
+    },
+    sky: { top: '#080404', upper: '#241010', near: '#5a2414', horizon: 0x4a1c10, bottom: '#180806' },
+    fog: [25, 105],
+    hemi: [0xb07050, 0x301008, 2.1],
+    sun: [0xffa070, 1.5],
+    motes: { color: 0xff8a3a, rise: 1, size: 0.13 },
+    geyserColors: [0xff4a0a, 0xff8a1a, 0xffd04a],
+    scenery: { trees: { count: 20, color: 0x1c1412, style: 'dead' }, bones: 50, chains: 14 },
+    ruler: {
+      name: 'Furcas',
+      title: 'Warden of the Chains',
+      skin: 0x7a3a2a,
+      robe: 0x2a1a14,
+      horns: 0x4a4a52,
+      eyes: 0xff7a20,
+      greeting:
+        'A Warlord, come to rattle my chains? I am Furcas. Every chain in these canyons binds a soul that once defied hell. Heaven wants to cut them all loose. You will not let it.',
+      again: 'The canyons echo with wingbeats. Go and silence them.',
+      allDone: 'The chains hold, Archfiend. But I still hear wings.',
+      promotion: 'My chains are tight and my canyons quiet. Rise, Warlord, an Archfiend. The Hellgate now opens on Frozen Hell, where even fire shivers.',
+      chestHint: 'My hoard sits walled up in the eastern canyon. The only way in is a crack no wider than an imp. Make yourself small.',
+    },
+    missions: {
+      war: {
+        id: 'chainworks',
+        title: 'Siege of the Chainworks',
+        brief: 'Angel knights are marching up the southern canyon to smash my chainworks. Meet them there with my imps and hold.',
+        praise: 'The chainworks stand. Bind the survivors.',
+        defend: { x: -50, z: -30 },
+        from: { x: -50, z: -62 },
+      },
+      retrieve: {
+        id: 'master-key',
+        title: 'The Master Key',
+        brief: 'The Master Key locks every chain in these canyons, and angels have stolen it to set the bound souls free. Their camp is in the east. Bring it back.',
+        praise: 'Every lock still holds. Good.',
+        camp: { x: 45, z: 0 },
+        item: { name: 'Master Key', look: 'gem', color: 0xc0c0d0 },
+      },
+      assassinate: {
+        id: 'chainbreaker',
+        title: 'The Chainbreaker',
+        brief: 'Uziel the Chainbreaker cuts my chains and frees my prisoners. The angel waits at their northwest post. Kill Uziel. Unseen, double pay.',
+        praise: 'No more broken chains.',
+        post: { x: -45, z: 50 },
+        target: { kind: 'officer', label: 'Uziel the Chainbreaker' },
+      },
+    },
+  },
+
+  {
+    index: 7,
+    name: 'The Seventh Plane',
+    title: 'Frozen Hell',
+    level: 30,
+    power: 2.7,
+    seed: 7717,
+    terrain: { base: 1.5, amp: 1.6, freq: 0.9, spires: 35, boulders: 50 },
+    rivers: [],
+    lakes: [
+      [-40, 25, 10],
+      [40, 30, 8],
+      [30, -45, 7],
+      [-50, -45, 6],
+    ],
+    mesas: [[60, -30, 7, 4]],
+    geysers: [
+      { x: -14.5, z: -24.5 }, { x: 20.5, z: 10.5 }, { x: -24.5, z: 4.5 }, { x: 4.5, z: 30.5 }, { x: -56.5, z: 54.5 },
+      { x: 56.5, z: 56.5 }, { x: 10.5, z: -56.5 }, { x: -60.5, z: -16.5 },
+    ],
+    flatZones: [
+      [40, -5, 9],
+      [-45, 0, 8],
+      [10, 50, 7],
+    ],
+    treasure: { x: -20.5, z: 46.5 },
+    treasureGeyser: { x: 55.5, z: -12.5 },
+    treasureLock: 'rubble',
+    liquid: { colors: ['#020a18', '#04142c', '#082040', '#0c3058', '#184a78', '#2a6a98'], glow: [0.2, 0.5, 0.9], brightness: 0.8 },
+    palette: {
+      ground: [0xd8e4ec, 0xa8b8c8, 0x8898a8],
+      rock: [0x6a7888, 0x586676, 0x465464],
+      vent: [0x3a7aa8, 0x2a5a80, 0x1a3a58],
+      spire: [0xa8e0f8, 0x88c0e0, 0x68a0c0],
+      cliff: [0x9aa8b8, 0x7a8898, 0x5a6878],
+      spireGlow: 0.15,
+    },
+    sky: { top: '#02040a', upper: '#0a1424', near: '#3a5070', horizon: 0x4a6080, bottom: '#101820' },
+    fog: [18, 90],
+    hemi: [0xc0d8f0, 0x304050, 2.0],
+    sun: [0xe0f0ff, 1.5],
+    motes: { color: 0xffffff, rise: -0.9, size: 0.12 },
+    geyserColors: [0x60c0ff, 0xa0e0ff, 0xffffff],
+    scenery: { trees: { count: 30, color: 0xb8c8d8, style: 'dead' }, crystals: { count: 50, color: 0x9adcff } },
+    ruler: {
+      name: 'Belial',
+      title: 'The Frost Lord',
+      skin: 0x6a88a8,
+      robe: 0x1a2838,
+      horns: 0xe0f0ff,
+      eyes: 0x60d0ff,
+      greeting:
+        'An Archfiend, shivering already. I am Belial. Down here even fire freezes in your throat. Heaven thinks the cold has made me slow. Prove it wrong.',
+      again: 'Heaven is warming my ice with its light. Go and put it out.',
+      allDone: 'Still here, Duke of Hell? The cold suits you.',
+      promotion: 'My ice is black and quiet again. Rise, Archfiend, a Duke of Hell. The Hellgate now opens on the Burning Sky.',
+      chestHint: 'My frozen hoard sits behind a wall of boulders in the north. Only something huge could shift them. Grow.',
+    },
+    missions: {
+      war: {
+        id: 'frozen-front',
+        title: 'The Frozen Front',
+        brief: 'A column of angel knights is marching across the ice toward my eastern gate. Break them there with my imps.',
+        praise: 'The ice is red. Good.',
+        defend: { x: 40, z: -5 },
+        from: { x: 60, z: 40 },
+      },
+      retrieve: {
+        id: 'heart-of-winter',
+        title: 'The Heart of Winter',
+        brief: 'They stole the Heart of Winter, the cold that keeps this plane frozen. Their camp is to the west. Bring it home before the ice melts.',
+        praise: 'Feel that? The cold is back.',
+        camp: { x: -45, z: 0 },
+        item: { name: 'Heart of Winter', look: 'gem', color: 0x80e0ff },
+      },
+      assassinate: {
+        id: 'ophaniel',
+        title: 'Saint Ophaniel',
+        brief: 'Saint Ophaniel melts my ice with prayer. The saint shelters at the northern post. End the prayers. Unseen, double pay.',
+        praise: 'The ice is already thickening.',
+        post: { x: 10, z: 50 },
+        target: { kind: 'officer', label: 'Saint Ophaniel' },
+      },
+    },
+  },
+
+  {
+    index: 8,
+    name: 'The Eighth Plane',
+    title: 'The Burning Sky',
+    level: 35,
+    power: 3.0,
+    seed: 8819,
+    terrain: { base: 1, amp: 0.5, freq: 1, spires: 8, boulders: 20, sea: true },
+    causeways: [
+      [0.5, -12, -45, 30],
+      [0.5, -12, 45, 35],
+      [0.5, -12, 45, -40],
+      [0.5, -12, -45, -40],
+      [0.5, -12, 0, 45],
+    ],
+    rivers: [],
+    lakes: [],
+    mesas: [
+      [-45, 30, 9, 4],
+      [45, 35, 9, 5],
+      [45, -40, 8, 4],
+      [-45, -40, 8, 5],
+      [0, 45, 7, 6],
+      [-62, -2, 6, 3],
+    ],
+    geysers: [
+      { x: -38.5, z: -42.5 }, { x: 38.5, z: -36.5 }, { x: 4.5, z: 50.5 }, { x: 52.5, z: 40.5 }, { x: -52.5, z: 34.5 }, { x: 22.5, z: 4.5 },
+    ],
+    flatZones: [
+      [-45, 25, 9],
+      [45, 35, 8],
+      [45, -40, 7],
+    ],
+    treasure: { x: -62.5, z: -2.5 },
+    treasureGeyser: { x: -58.5, z: -6.5 },
+    treasureLock: 'sky',
+    liquid: LAVA,
+    palette: {
+      ground: [0x7a4030, 0x6a3020, 0x502418],
+      rock: [0x4a2a24, 0x3a201c, 0x2c1814],
+      vent: [0x8a2e0c, 0x6a220a, 0x4a1a0a],
+      spire: [0x3a1a14, 0x2c1410, 0x200e0a],
+      cliff: [0x6a3020, 0x5a281a, 0x4a2014],
+      spireGlow: 0,
+    },
+    sky: { top: '#2a0804', upper: '#6a1a08', near: '#c04010', horizon: 0xa03a10, bottom: '#3a0a04' },
+    fog: [35, 140],
+    hemi: [0xff9060, 0x601808, 2.2],
+    sun: [0xffc080, 1.8],
+    motes: { color: 0xffa040, rise: 2.2, size: 0.15 },
+    geyserColors: [0xff4a0a, 0xff8a1a, 0xffd04a],
+    scenery: { bones: 20 },
+    ruler: {
+      name: 'Phenex',
+      title: 'The Burning Phoenix',
+      skin: 0xd06020,
+      robe: 0x6a1a08,
+      horns: 0xffd040,
+      eyes: 0xffff80,
+      greeting:
+        'A Duke of Hell. Look up, Duke: everything here burns, even the sky. I am Phenex. Heaven’s seraphs ride these flames as if they owned them. Teach them otherwise.',
+      again: 'The sky is full of wings. Go and clip some.',
+      allDone: 'The sky is yours as much as mine, Prince. Still, there are always more seraphs.',
+      promotion: 'My sky burns clean again. Rise, Duke, a Prince of Hell. The Hellgate now opens on the Abyss. What waits down there, even I do not know.',
+      chestHint: 'My hoard sits atop a burning spire on the western island, higher than any geyser can throw you. You will need wings.',
+    },
+    missions: {
+      war: {
+        id: 'sky-ramparts',
+        title: 'The Sky Ramparts',
+        brief: 'Seraphs are gathering over the western island to take my ramparts. Hold the island with my imps until their host falls into the fire.',
+        praise: 'They burned on the way down. Beautiful.',
+        defend: { x: -45, z: 25 },
+        from: { x: -45, z: 38 },
+      },
+      retrieve: {
+        id: 'phoenix-feather',
+        title: 'The Phoenix Feather',
+        brief: 'Angels plucked a feather from my wing and carried it to their camp on the eastern island. I want it back.',
+        praise: 'Mine again. The sky remembers it.',
+        camp: { x: 45, z: 35 },
+        item: { name: 'Phoenix Feather', look: 'gem', color: 0xffa020 },
+      },
+      assassinate: {
+        id: 'iofiel',
+        title: 'Commander Iofiel',
+        brief: 'Commander Iofiel leads the seraphs from a post on the southeastern island. Without the commander they are only birds. Unseen, double pay.',
+        praise: 'Only birds now.',
+        post: { x: 45, z: -40 },
+        target: { kind: 'officer', label: 'Commander Iofiel' },
+      },
+    },
+  },
+
+  {
+    index: 9,
+    name: 'The Ninth Plane',
+    title: 'The Abyss',
+    level: 40,
+    power: 3.3,
+    seed: 9923,
+    terrain: { base: 1, amp: 2.4, freq: 1.3, spires: 70, boulders: 40 },
+    rivers: [{ along: 'z', center: (z) => 25 + 10 * Math.sin(z * 0.05), width: () => 6, from: -HALF, to: HALF, bridges: [-40, 0, 40] }],
+    lakes: [
+      [-40, 40, 8],
+      [-48, -48, 7],
+    ],
+    mesas: [],
+    geysers: [
+      { x: -14.5, z: -26.5 }, { x: -30.5, z: -2.5 }, { x: 50.5, z: 20.5 }, { x: 6.5, z: 36.5 }, { x: -58.5, z: 18.5 },
+      { x: 56.5, z: -52.5 }, { x: -20.5, z: -56.5 }, { x: 60.5, z: 60.5 },
+    ],
+    flatZones: [
+      [-20, 40, 9],
+      [50, -10, 8],
+      [52, 45, 7],
+    ],
+    treasure: { x: -45.5, z: 12.5 },
+    treasureGeyser: { x: 6.5, z: -48.5 },
+    treasureLock: 'crack',
+    liquid: { colors: ['#04000a', '#0c0218', '#1a0430', '#2c0850', '#4a1078', '#7020a8'], glow: [0.5, 0.1, 0.9], brightness: 0.9 },
+    palette: {
+      ground: [0x2a2034, 0x221a2c, 0x1a1422],
+      rock: [0x1a1420, 0x14101a, 0x0e0a12],
+      vent: [0x6a2a9a, 0x4a1a6a, 0x2a0e3a],
+      spire: [0x3a1a5a, 0x2c1446, 0x200e34],
+      cliff: [0x241c30, 0x1c1626, 0x14101c],
+      spireGlow: 0.2,
+    },
+    sky: { top: '#000000', upper: '#06020c', near: '#1a0828', horizon: 0x14061e, bottom: '#04010a' },
+    fog: [12, 70],
+    hemi: [0x8060c0, 0x200a30, 1.8],
+    sun: [0xc0a0ff, 1.1],
+    motes: { color: 0xb060ff, rise: 0.5, size: 0.11 },
+    geyserColors: [0x8020ff, 0xb060ff, 0xe0c0ff],
+    scenery: { bones: 60, crystals: { count: 60, color: 0xa040ff } },
+    ruler: {
+      name: 'Leviathan',
+      title: 'Keeper of the Abyss',
+      skin: 0x2a3a5a,
+      robe: 0x0a0614,
+      horns: 0x8060c0,
+      eyes: 0xc060ff,
+      greeting:
+        'A Prince of Hell, at the bottom of everything. I am Leviathan. Below my Abyss there is only the angels’ war camp, where their general waits. Clear my Abyss first.',
+      again: 'The dark is crawling with light. Snuff it out.',
+      allDone: 'The Abyss is quiet. Only the war camp remains, Prince.',
+      promotion:
+        'My Abyss is dark again. Nothing stands between you and the angels’ general now but their war camp, and your own strength. When you reach level 50, the Hellgate will take you there.',
+      chestHint: 'The deepest hoard in hell lies walled up to the west, past a crack only something very small could slip through.',
+    },
+    missions: {
+      war: {
+        id: 'last-dark',
+        title: 'The Last Dark',
+        brief: 'Heaven’s vanguard is pushing into the Abyss from the north. Hold the line with my imps. It is the last line there is.',
+        praise: 'The dark holds. For now.',
+        defend: { x: -20, z: 40 },
+        from: { x: -20, z: 63 },
+      },
+      retrieve: {
+        id: 'eye-of-abyss',
+        title: 'The Eye of the Abyss',
+        brief: 'The Eye of the Abyss sees every soul that falls this far. Angels took it to their camp in the east. Bring it back before they learn to see with it.',
+        praise: 'It sees again. And it saw you.',
+        camp: { x: 50, z: -10 },
+        item: { name: 'Eye of the Abyss', look: 'gem', color: 0x8020ff },
+      },
+      assassinate: {
+        id: 'sandalphon',
+        title: 'Herald Sandalphon',
+        brief: 'Herald Sandalphon carries the general’s orders through the Abyss from a post in the northeast. Silence the herald. Unseen, double pay.',
+        praise: 'Let the general wonder why nobody answers.',
+        post: { x: 52, z: 45 },
+        target: { kind: 'officer', label: 'Herald Sandalphon' },
       },
     },
   },
