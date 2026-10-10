@@ -26,11 +26,42 @@ export interface SaveData {
   chests: number[];
   /** Planes whose ruler you've met. */
   talkedPlanes: number[];
+  /** Angels slain, by kind (the bestiary). */
+  killsByKind: { [kind: string]: number };
+  silentKills: number;
+  /** Trophy ids earned. */
+  trophies: string[];
+  /** The deepest plane you've stood on. */
+  deepest: number;
+  /** Player 2 in split screen, kept so they come back as themselves. */
+  player2: Player2Save | null;
   savedAt: number;
 }
 
+export interface Player2Save {
+  name: string;
+  dogName: string;
+  weapons: Weapon[];
+  equipped: number;
+  armor: Armor | null;
+}
+
 /** Fields added after phase 2, with their starting values. */
-const LATER_FIELDS = () => ({ weapons: [{ ...STARTING_WEAPON }], equipped: 0, armor: null as Armor | null, plane: 1, missionsDone: [] as string[], sideDone: 0, chests: [] as number[], talkedPlanes: [] as number[] });
+const LATER_FIELDS = () => ({
+  weapons: [{ ...STARTING_WEAPON }],
+  equipped: 0,
+  armor: null as Armor | null,
+  plane: 1,
+  missionsDone: [] as string[],
+  sideDone: 0,
+  chests: [] as number[],
+  talkedPlanes: [] as number[],
+  killsByKind: {} as { [kind: string]: number },
+  silentKills: 0,
+  trophies: [] as string[],
+  deepest: 1,
+  player2: null as Player2Save | null,
+});
 
 let key = 'devilization.save';
 
@@ -73,10 +104,26 @@ export function loadSave(): SaveData | null {
     if (old.talked && !save.talkedPlanes.includes(1)) save.talkedPlanes.push(1);
     if (!Number.isInteger(save.plane) || save.plane < 1) save.plane = 1;
     if (!isArmor(save.armor)) save.armor = null;
+    if (typeof save.killsByKind !== 'object' || save.killsByKind === null) save.killsByKind = {};
+    if (typeof save.silentKills !== 'number') save.silentKills = 0;
+    if (!Array.isArray(save.trophies)) save.trophies = [];
+    // Saves from before trophies: your rank tells how deep you've been allowed to go.
+    if (!Number.isInteger(save.deepest)) save.deepest = Math.min(10, Math.max(save.plane, save.rank + 1));
+    save.deepest = Math.max(save.deepest, save.plane);
+    save.player2 = cleanPlayer2(save.player2);
     return save;
   } catch {
     return null;
   }
+}
+
+function cleanPlayer2(p: unknown): Player2Save | null {
+  const d = p as Partial<Player2Save> | null;
+  if (!d || typeof d.name !== 'string' || typeof d.dogName !== 'string' || !Array.isArray(d.weapons)) return null;
+  const weapons = d.weapons.filter(isWeapon);
+  if (weapons.length === 0) weapons.push({ ...STARTING_WEAPON });
+  const equipped = Number.isInteger(d.equipped) && d.equipped! >= 0 && d.equipped! < weapons.length ? d.equipped! : 0;
+  return { name: d.name, dogName: d.dogName, weapons, equipped, armor: isArmor(d.armor) ? d.armor : null };
 }
 
 export function writeSave(data: SaveData) {

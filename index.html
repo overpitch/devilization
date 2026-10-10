@@ -148,11 +148,18 @@
           <button id="resume-btn">Resume</button>
           <button id="armory-btn" class="secondary">Armory</button>
           <button id="lair-btn" class="secondary">Return to the lair</button>
+          <button id="trophies-btn" class="secondary">Trophies</button>
           <button id="p2-btn" class="secondary">Add Player 2</button>
           <button id="quit-btn" class="secondary">Quit to title</button>
         </div>
         <p class="lair-reason" id="lair-reason"></p>
         <div class="options">
+          <label class="option">
+            <span>Difficulty</span>
+            <input type="range" id="difficulty" min="0" max="2" step="1" value="1" />
+            <output id="difficulty-value">Normal</output>
+          </label>
+          <p class="difficulty-note" id="difficulty-note"></p>
           <label class="option">
             <span>Look sensitivity</span>
             <input type="range" id="sens" min="0.2" max="3" step="0.1" value="1" />
@@ -172,6 +179,11 @@
             <span>Sound volume</span>
             <input type="range" id="sfx-volume" min="0" max="1" step="0.05" value="0.8" />
             <output id="sfx-volume-value">80%</output>
+          </label>
+          <label class="option">
+            <span>Mini map</span>
+            <input type="checkbox" id="show-minimap" />
+            <output id="minimap-value">On</output>
           </label>
           <label class="option">
             <span>Low graphics (faster)</span>
@@ -199,6 +211,19 @@
         <p class="armory-message" id="armory-message"></p>
         <div class="cards" id="armory-rows"></div>
         <button id="armory-close-btn" class="secondary">Back</button>
+      </div>
+    </div>
+
+    <!-- Trophies and bestiary -->
+    <div id="trophies-screen" class="overlay hidden">
+      <div class="panel trophies">
+        <h2>Trophies</h2>
+        <p class="subtitle" id="trophies-count"></p>
+        <div class="trophy-list" id="trophy-list"></div>
+        <h2 class="second">Bestiary</h2>
+        <p class="subtitle">The angels you have slain</p>
+        <div class="trophy-list" id="bestiary-list"></div>
+        <button id="trophies-close-btn" class="secondary">Back</button>
       </div>
     </div>
 

@@ -62,6 +62,16 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 
 ## What's in so far
 
+### Since phase 10
+
+- **Mini map** in the bottom-right corner: small, round and see-through, turning with you so forward is always up. It shows the ground and rivers around you, angels (white on guard, yellow when suspicious, red when hunting you), imps, dogs, the ruler, the Hellgate, the unopened chest, the objective (pinned to the rim when it's far away) and, in split screen, your partner. Each player gets their own. Pause → Mini map turns it off.
+- **Faster on Xbox:** each angel is drawn with about half as many pieces (the boxes on each limb are merged), so big battles cost roughly half the draw calls. Edge smoothing is off on Xbox, where it's expensive at TV resolution.
+- **Split screen:** Player 2 now sees angels' health bars, name tags and ? / ! marks too.
+- The pause menu's buttons fit their labels, and menus taller than the window scroll instead of being cut off.
+- **Difficulty** (Pause → Difficulty): **Easy** (angels hit 40% softer and have 25% less health; you heal faster), **Normal**, or **Hard** (angels hit 40% harder and have 30% more health; you heal slower, but get 25% more XP). Changes apply to angels that appear afterwards.
+- **Trophies and bestiary** (Pause → Trophies): 19 trophies with progress, from First Blood to Demon Lord, announced as you earn them; and a bestiary of every kind of angel you've slain, with counts. (Kills from before this update aren't in the bestiary; trophies that only need totals, like kills, levels and chests, are earned straight away.)
+- **Saved co-op:** Player 2's name, hellhound and gear are saved, so the next time a second controller joins, the same demon comes back.
+
 ### Phase 10
 
 - **Music,** generated live like the sound effects: a slow, ominous title theme with war drums and a low choir; music for wandering that takes on each plane's flavor (Phrygian dread on the Burning Plains, hollow pads in the Ash Wastes, chimes in Frozen Hell, a choir in the Abyss, heaven's key turned against you in the war camp); war drums and brass when angels hunt you; a choir-and-organ boss theme for the general; and a dark fanfare for the Demon Lord ending. Themes crossfade as things change. **Music volume** has its own slider in the pause menu.
@@ -210,6 +220,9 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 | `src/hud.ts` | Status bars, power slots, and the title, naming, intro, pause and death screens |
 | `src/input.ts` | Keyboard, pointer-lock mouse and controllers |
 | `src/menuNav.ts` | Driving the menus with a controller |
+| `src/minimap.ts` | The mini map |
+| `src/trophies.ts` | Trophies and the bestiary |
+| `src/mergeRig.ts` | Merges a character's boxes per limb, for fewer draw calls |
 | `src/avatar.ts` | A demon's body as the other player sees it in split screen |
 | `src/hud2.ts` | Player 2's half of the screen |
 | `src/viewport.ts` | The size of Player 1's view (half the window in split screen) |

@@ -990,6 +990,15 @@ export class Campaign {
   }
 
   /** The current goal: text at the top of the screen and a marker in the world. */
+  /** Landmarks for the mini map: the ruler, the Hellgate, and the chest until it's opened. */
+  mapMarks() {
+    return {
+      ruler: this.ruler.pos,
+      portal: { x: PORTAL.x, z: PORTAL.z },
+      chest: this.chestOpened ? null : this.chest.position,
+    };
+  }
+
   objective(): { text: string; at: THREE.Vector3 | null } {
     const name = this.rulerName;
     const ruler = this.ruler.pos.clone().setY(this.ruler.pos.y + 3);

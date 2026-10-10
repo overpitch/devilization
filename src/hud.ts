@@ -1,5 +1,6 @@
 import { SPIKE_COOLDOWN, type Player } from './player';
-import type { Settings } from './settings';
+import { DIFFICULTIES, DIFFICULTY_ORDER, type Settings } from './settings';
+import { BESTIARY, TROPHIES, type TrophyRecord } from './trophies';
 import type { SaveData } from './save';
 import { sfx } from './audio';
 import { RANKS, UNLOCK } from './progression';
@@ -83,6 +84,8 @@ export class Hud {
   onReturnToLair?: () => void;
   /** Pause > Add Player 2 / Remove Player 2. */
   onTogglePlayer2?: () => void;
+  onTrophiesOpen?: () => void;
+  onTrophiesClose?: () => void;
   onArmoryOpen?: () => void;
   onKeepPlaying?: () => void;
   onEndingTitle?: () => void;
@@ -151,6 +154,8 @@ export class Hud {
     click('respawn-btn', () => this.onRespawn?.());
     click('lair-btn', () => this.onReturnToLair?.());
     click('p2-btn', () => this.onTogglePlayer2?.());
+    click('trophies-btn', () => this.onTrophiesOpen?.());
+    click('trophies-close-btn', () => this.onTrophiesClose?.());
     click('armory-btn', () => this.onArmoryOpen?.());
     click('keep-playing-btn', () => this.onKeepPlaying?.());
     click('ending-title-btn', () => this.onEndingTitle?.());
@@ -190,6 +195,8 @@ export class Hud {
     const volume = $<HTMLInputElement>('sfx-volume');
     const music = $<HTMLInputElement>('music-volume');
     const low = $<HTMLInputElement>('low-graphics');
+    const map = $<HTMLInputElement>('show-minimap');
+    const difficulty = $<HTMLInputElement>('difficulty');
     const show = () => {
       sens.value = String(settings.sensitivity);
       $('sens-value').textContent = settings.sensitivity.toFixed(1);
@@ -199,6 +206,11 @@ export class Hud {
       $('sfx-volume-value').textContent = `${Math.round(settings.sfxVolume * 100)}%`;
       music.value = String(settings.musicVolume);
       $('music-volume-value').textContent = `${Math.round(settings.musicVolume * 100)}%`;
+      difficulty.value = String(DIFFICULTY_ORDER.indexOf(settings.difficulty));
+      $('difficulty-value').textContent = DIFFICULTIES[settings.difficulty].label;
+      $('difficulty-note').textContent = DIFFICULTIES[settings.difficulty].description;
+      map.checked = settings.minimap;
+      $('minimap-value').textContent = settings.minimap ? 'On' : 'Off';
       low.checked = settings.graphics === 'low';
       $('graphics-value').textContent = low.checked ? 'On' : 'Off';
     };
@@ -207,11 +219,13 @@ export class Hud {
       settings.invertY = invert.checked;
       settings.sfxVolume = Number(volume.value);
       settings.musicVolume = Number(music.value);
+      settings.minimap = map.checked;
+      settings.difficulty = DIFFICULTY_ORDER[Number(difficulty.value)] ?? 'normal';
       settings.graphics = low.checked ? 'low' : 'high';
       show();
       this.onSettings?.(settings);
     };
-    for (const el of [sens, invert, music, volume, low]) el.addEventListener('input', changed);
+    for (const el of [difficulty, sens, invert, music, volume, map, low]) el.addEventListener('input', changed);
     show();
   }
 
@@ -457,6 +471,36 @@ export class Hud {
 
   get endingOpen() {
     return !$('ending-screen').classList.contains('hidden');
+  }
+
+  /** The trophies and bestiary page (null hides it). */
+  showTrophies(view: { record: TrophyRecord; earned: Set<string> } | null) {
+    $('trophies-screen').classList.toggle('hidden', !view);
+    if (!view) return;
+    const { record, earned } = view;
+    $('trophies-count').textContent = `${earned.size} of ${TROPHIES.length} earned`;
+    // Each entry is a button so a controller can step through (and scroll) the list.
+    $('trophy-list').innerHTML = TROPHIES.map((t) => {
+      const got = earned.has(t.id);
+      const value = Math.min(t.goal, t.value(record));
+      const progress = got || t.goal === 1 ? '' : `<span class="trophy-progress">${value.toLocaleString()} / ${t.goal.toLocaleString()}</span>`;
+      return `<button type="button" class="trophy${got ? ' earned' : ''}"><b>${got ? '★' : '☆'} ${t.name}</b><span>${t.text}</span>${progress}</button>`;
+    }).join('');
+    $('bestiary-list').innerHTML = BESTIARY.map((b) => {
+      const n = record.killsByKind[b.kind] ?? 0;
+      return n > 0
+        ? `<button type="button" class="trophy beast"><b>${b.name}</b><span>${b.text}</span><span class="trophy-progress">Slain: ${n.toLocaleString()}</span></button>`
+        : `<button type="button" class="trophy beast unknown"><b>???</b><span>Not yet slain.</span></button>`;
+    }).join('');
+  }
+
+  get trophiesOpen() {
+    return !$('trophies-screen').classList.contains('hidden');
+  }
+
+  /** The armory or the trophies page: screens reached from the pause menu. */
+  get sideScreenOpen() {
+    return this.armoryOpen || this.trophiesOpen;
   }
 
   get armoryOpen() {

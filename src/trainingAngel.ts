@@ -65,8 +65,8 @@ export class TrainingAngel implements Foe {
   private readonly leanVel = new THREE.Vector2();
   private flash = 0;
   private deadTime = 0;
-  private readonly bar: HTMLDivElement;
-  private readonly barFill: HTMLDivElement;
+  /** One health bar per player's view (Player 2's made when first needed). */
+  private readonly bars: { bar: HTMLDivElement; fill: HTMLDivElement }[] = [];
   private burnTime = 0;
   private burnDps = 0;
   /** Burn damage not yet shown as a number. */
@@ -94,11 +94,7 @@ export class TrainingAngel implements Foe {
     // Solid, so you can't walk through it.
     addCollider({ x, z, r: 0.35 });
 
-    this.bar = document.createElement('div');
-    this.bar.className = 'enemy-bar';
-    this.barFill = document.createElement('div');
-    this.bar.appendChild(this.barFill);
-    barLayer.appendChild(this.bar);
+    this.makeBar(barLayer);
   }
 
   /** A blow from a weapon, horns or teeth. The attacker shows the damage number. */
@@ -260,23 +256,37 @@ export class TrainingAngel implements Foe {
   /** Removes it from the world (leaving the plane). */
   dispose() {
     this.tilt.removeFromParent();
-    this.bar.remove();
+    for (const b of this.bars) b.bar.remove();
   }
 
-  /** Health bar floating over the angel once it has been hurt. */
-  updateBar(camera: THREE.Camera) {
+  private makeBar(layer: HTMLElement) {
+    const bar = document.createElement('div');
+    bar.className = 'enemy-bar';
+    const fill = document.createElement('div');
+    bar.appendChild(fill);
+    layer.appendChild(bar);
+    this.bars.push({ bar, fill });
+  }
+
+  /** Health bar floating over the angel once it has been hurt, as one player sees it (`view` 1 is Player 2, drawn in `layer`). */
+  updateBar(camera: THREE.Camera, view = 0, layer?: HTMLElement, size: { w: number; h: number } = viewport) {
+    if (!this.bars[view]) {
+      if (!layer) return;
+      this.makeBar(layer);
+    }
+    const { bar, fill } = this.bars[view];
     const show = this.alive && this.hp < this.maxHp;
     if (!show) {
-      this.bar.style.display = 'none';
+      bar.style.display = 'none';
       return;
     }
     const p = new THREE.Vector3(this.pos.x, this.pos.y + 2.55, this.pos.z).project(camera);
     if (p.z > 1) {
-      this.bar.style.display = 'none';
+      bar.style.display = 'none';
       return;
     }
-    this.bar.style.display = '';
-    this.bar.style.transform = `translate(${(p.x * 0.5 + 0.5) * viewport.w}px, ${(-p.y * 0.5 + 0.5) * viewport.h}px) translate(-50%, -50%)`;
-    this.barFill.style.width = `${(this.hp / this.maxHp) * 100}%`;
+    bar.style.display = '';
+    bar.style.transform = `translate(${(p.x * 0.5 + 0.5) * size.w}px, ${(-p.y * 0.5 + 0.5) * size.h}px) translate(-50%, -50%)`;
+    fill.style.width = `${(this.hp / this.maxHp) * 100}%`;
   }
 }

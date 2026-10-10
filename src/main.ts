@@ -7,7 +7,8 @@ import { plane, setPlane } from './planes';
 import { Player } from './player';
 import { Dog } from './dog';
 import { TrainingAngel } from './trainingAngel';
-import { Fighter, type FighterKind, type SpawnOptions } from './fighter';
+import { Fighter, FIGHTER_KINDS, type FighterKind, type SpawnOptions } from './fighter';
+import { newlyEarned, type TrophyRecord } from './trophies';
 import { Campaign, type CampaignHooks, type Interactable, type Progress } from './campaign';
 import { Projectiles } from './projectiles';
 import { Geysers } from './geysers';
@@ -18,15 +19,16 @@ import { Particles } from './particles';
 import { Floaters } from './floaters';
 import { initAudio, setAmbience, setBreathing, setVolumes, sfx } from './audio';
 import { Music, type Theme } from './music';
-import { IS_XBOX, loadSettings, saveSettings, type Settings } from './settings';
+import { DIFFICULTIES, IS_XBOX, loadSettings, saveSettings, type Settings } from './settings';
 import { MenuNavigator } from './menuNav';
 import { Avatar } from './avatar';
 import { PlayerTwoHud } from './hud2';
 import { viewport } from './viewport';
+import { Minimap, type MapDot } from './minimap';
 import { randomDemonName, randomDogName } from './hud';
 import { Spikes } from './powers';
 import { Pickups } from './pickups';
-import { loadSave, newSave, useTestSaveSlot, writeSave, type SaveData } from './save';
+import { loadSave, newSave, useTestSaveSlot, writeSave, type Player2Save, type SaveData } from './save';
 import { MAX_LEVEL, RANKS, unlocksAt, xpToNext } from './progression';
 import { weaponName, type Weapon } from './weapons';
 import { Armory, type ArmoryTab } from './armory';
@@ -41,7 +43,8 @@ const startLevel = Number(params.get('level')) || 0;
 
 const settings = loadSettings();
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+// Smoothing edges is costly at TV resolution in an Xbox browser, so it's off there.
+const renderer = new THREE.WebGLRenderer({ antialias: !IS_XBOX, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -87,6 +90,9 @@ const input2 = new Input(renderer.domElement, false);
 const avatars = [new Avatar(scene, 0), new Avatar(scene, 1)];
 const hud2 = new PlayerTwoHud();
 const floaters2 = new Floaters(hud2.floaterLayer, hud2.size);
+// A mini map for each player, in the bottom-right corner of their view.
+const minimap = new Minimap(document.getElementById('hud')!);
+const minimap2 = new Minimap(hud2.root);
 let twoPlayer = false;
 /** "Add Player 2" was chosen: the next controller to press A joins. */
 let waitingForP2 = false;
@@ -108,6 +114,14 @@ player.onHurt = () => input.rumble(0.7, 180);
 
 /** What you've achieved across every plane. */
 const progress: Progress = { done: new Set(), chests: new Set(), talked: new Set(), sideDone: 0 };
+/** For the bestiary and trophies. */
+let killsByKind: { [kind: string]: number } = {};
+let silentKills = 0;
+let deepest = 1;
+const earned = new Set<string>();
+let trophyTimer = 0;
+/** Player 2 as they were when they last left (kept in the save). */
+let savedP2: Player2Save | null = null;
 
 // The current plane: everything in it hangs from planeRoot, so leaving is just removing it.
 let planeRoot = new THREE.Group();
@@ -123,6 +137,13 @@ const fighters: Fighter[] = [];
 const foes: Foe[] = [];
 
 function applySettings(s: Settings) {
+  const diff = DIFFICULTIES[s.difficulty];
+  for (const p of [player, player2]) {
+    p.damageTaken = diff.enemyDamage;
+    p.regen = diff.regen;
+  }
+  minimap.visible = s.minimap;
+  minimap2.visible = s.minimap;
   cam.sensitivity = s.sensitivity;
   cam.invertY = s.invertY;
   setVolumes(s.musicVolume, s.sfxVolume);
@@ -174,12 +195,14 @@ const ctx: GameContext = {
   onFoeKilled: (foe) => {
     kills++;
     const r = (foe as Foe & { reward: { xp: number; gold: number; drop: Weapon | null } }).reward;
+    if (foe instanceof Fighter && foe.side === 'heaven') killsByKind[foe.kind] = (killsByKind[foe.kind] ?? 0) + 1;
+    const xp = Math.round(r.xp * DIFFICULTIES[settings.difficulty].xp);
     const chest = new THREE.Vector3(foe.pos.x, foe.pos.y + 1.4, foe.pos.z);
     // Ten coins burst out, whatever they're worth together.
     if (r.gold > 0) pickups.spawnGold(chest, 10, r.gold / 10);
-    if (r.xp > 0) {
-      floaters.spawn(chest.clone().setY(chest.y + 1.2), `+${r.xp} XP`, 'xp');
-      awardXp(r.xp);
+    if (xp > 0) {
+      floaters.spawn(chest.clone().setY(chest.y + 1.2), `+${xp} XP`, 'xp');
+      awardXp(xp);
     }
     if (r.drop) campaign.dropWeapon(r.drop, foe.pos);
   },
@@ -194,12 +217,14 @@ pickups.onCollect = (at, value) => {
 };
 
 player.onAssassinate = player2.onAssassinate = (foe) => {
+  silentKills++;
   ctx.floatText(new THREE.Vector3(foe.pos.x, foe.pos.y + 2.6, foe.pos.z), 'Silent kill', 'heavy');
 };
 
 function spawnFighter(kind: FighterKind, x: number, z: number, opts?: SpawnOptions) {
   // Angels are stronger on deeper planes.
-  const f = new Fighter(planeRoot, kind, x, z, hud.barLayer, { power: plane().power, ...opts });
+  const toughness = FIGHTER_KINDS[kind].side === 'heaven' ? DIFFICULTIES[settings.difficulty].enemyHealth : 1;
+  const f = new Fighter(planeRoot, kind, x, z, hud.barLayer, { power: plane().power, toughness, ...opts });
   fighters.push(f);
   return f;
 }
@@ -255,6 +280,7 @@ function buildPlane(index: number) {
   pickups.clear();
   floaters.clear();
   setPlane(index);
+  deepest = Math.max(deepest, index);
   planeRoot = new THREE.Group();
   scene.add(planeRoot);
   world = createWorld(scene, planeRoot);
@@ -270,6 +296,8 @@ function buildPlane(index: number) {
         ].map(([x, z]) => new TrainingAngel(planeRoot, x, z, Math.atan2(SPAWN.x - x, SPAWN.z - z), hud.barLayer))
       : [];
   campaign = new Campaign(planeRoot, progress, campaignHooks);
+  minimap.paintPlane();
+  minimap2.paintPlane();
 }
 
 /** Through the Hellgate: to another plane, arriving before its ruler. */
@@ -344,6 +372,11 @@ function saveGame() {
     sideDone: progress.sideDone,
     chests: [...progress.chests],
     talkedPlanes: [...progress.talked],
+    killsByKind,
+    silentKills,
+    trophies: [...earned],
+    deepest,
+    player2: twoPlayer ? player2Save() : savedP2,
     savedAt: Date.now(),
   });
 }
@@ -373,6 +406,12 @@ function enterWorld(save: SaveData) {
   progress.chests = new Set(save.chests);
   progress.talked = new Set(save.talkedPlanes);
   progress.sideDone = save.sideDone;
+  killsByKind = { ...save.killsByKind };
+  silentKills = save.silentKills;
+  deepest = save.deepest;
+  earned.clear();
+  for (const id of save.trophies) earned.add(id);
+  savedP2 = save.player2;
   // You can't be on a plane your rank hasn't opened.
   buildPlane(Math.min(save.plane, player.rank + 1));
   phase = 'playing';
@@ -438,11 +477,15 @@ function joinPlayer2(padIndex: number) {
   ctx.players = [player, player2];
   ctx.dogs = [dog, dog2];
   // Same level and rank as Player 1, and a copy of their gear.
-  player2.loadHero(randomDemonName(player.name), player.level, player.xp, 0, player.rank);
-  player2.weapons = player.weapons.map((w) => ({ ...w }));
-  player2.equipped = player.equipped;
-  player2.armor = player.armor ? { ...player.armor } : null;
-  dog2.name = randomDogName(dog.name);
+  // Same level and rank as Player 1. A returning Player 2 keeps their name, dog and gear;
+  // a new one gets a name and a copy of Player 1's gear.
+  const back = savedP2;
+  player2.loadHero(back?.name ?? randomDemonName(player.name), player.level, player.xp, 0, player.rank);
+  player2.weapons = (back?.weapons ?? player.weapons).map((w) => ({ ...w }));
+  player2.equipped = back ? back.equipped : player.equipped;
+  const armor = back ? back.armor : player.armor;
+  player2.armor = armor ? { ...armor } : null;
+  dog2.name = back?.dogName ?? randomDogName(dog.name);
   dog2.visible = true;
   for (const a of avatars) a.visible = true;
   placePlayer2Beside();
@@ -451,11 +494,25 @@ function joinPlayer2(padIndex: number) {
   hud.setPlayer2(true);
   updateAspect();
   sfx.warHorn();
-  hud.announce(`${player2.name} has joined!`, `With ${dog2.name} at their side · Pause · Remove Player 2`);
+  hud.announce(back ? `${player2.name} is back!` : `${player2.name} has joined!`, `With ${dog2.name} at their side · Pause · Remove Player 2`);
+  saveGame();
+}
+
+/** Player 2's name, dog and gear, for the save. */
+function player2Save(): Player2Save {
+  return {
+    name: player2.name,
+    dogName: dog2.name,
+    weapons: player2.weapons.map((w) => ({ ...w })),
+    equipped: player2.equipped,
+    armor: player2.armor ? { ...player2.armor } : null,
+  };
 }
 
 function leavePlayer2() {
   if (!twoPlayer) return;
+  savedP2 = player2Save();
+  saveGame();
   twoPlayer = false;
   waitingForP2 = false;
   player2.stopPowers(ctx);
@@ -548,7 +605,7 @@ function lockPointer() {
   }
   input.requestLock();
   setTimeout(() => {
-    if (phase === 'playing' && !input.locked && input.mode === 'mouse' && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) hud.showPause(true);
+    if (phase === 'playing' && !input.locked && input.mode === 'mouse' && player.alive && !hud.rulerOpen && !hud.sideScreenOpen && !hud.endingOpen) hud.showPause(true);
   }, 1200);
 }
 
@@ -622,6 +679,7 @@ hud.onQuit = () => {
   hud.showDeath(false);
   hud.showRuler(null);
   hud.showArmory(null);
+  hud.showTrophies(null);
   if (document.pointerLockElement) document.exitPointerLock();
   hud.fadeIn();
   hud.showTitle(loadSave());
@@ -656,6 +714,15 @@ hud.onArmoryOpen = () => {
   showArmory();
 };
 hud.onArmoryClose = closeArmory;
+hud.onTrophiesOpen = () => {
+  hud.showPause(false);
+  hud.showTrophies({ record: trophyRecord(), earned });
+};
+hud.onTrophiesClose = closeTrophies;
+function closeTrophies() {
+  hud.showTrophies(null);
+  hud.showPause(true);
+}
 hud.onArmoryTab = (tab) => {
   armoryTab = tab;
   showArmory();
@@ -666,7 +733,7 @@ hud.onSettings = (s) => {
 };
 input.onLockChange = (locked) => {
   if (locked) hud.showPause(false);
-  else if (phase === 'playing' && input.mode === 'mouse' && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) {
+  else if (phase === 'playing' && input.mode === 'mouse' && player.alive && !hud.rulerOpen && !hud.sideScreenOpen && !hud.endingOpen) {
     player.stopPowers(ctx);
     saveGame();
     hud.showPause(true);
@@ -675,7 +742,7 @@ input.onLockChange = (locked) => {
 window.addEventListener('beforeunload', saveGame);
 // Clicking the game while paused resumes it.
 renderer.domElement.addEventListener('click', () => {
-  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen && !IS_XBOX) {
+  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.sideScreenOpen && !hud.endingOpen && !IS_XBOX) {
     input.mode = 'mouse';
     lockPointer();
   }
@@ -683,6 +750,7 @@ renderer.domElement.addEventListener('click', () => {
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && hud.rulerOpen) closeRuler();
   else if (e.code === 'Escape' && hud.armoryOpen) closeArmory();
+  else if (e.code === 'Escape' && hud.trophiesOpen) closeTrophies();
 });
 
 /** Stops play and shows the pause menu (the Menu button, or a controller player leaving the mouse). */
@@ -811,6 +879,63 @@ function nearestInteractable(player: Player, cam: FirstPersonCamera): Interactab
 }
 
 let p2Roaring = false;
+
+function trophyRecord(): TrophyRecord {
+  return {
+    kills,
+    killsByKind,
+    silentKills,
+    chests: progress.chests.size,
+    sideDone: progress.sideDone,
+    level: player.level,
+    rank: player.rank,
+    gold: player.gold,
+    deepest,
+    demonLord: player.rank >= RANKS.length - 1,
+  };
+}
+
+/** Once a second: announces any trophy just earned. */
+function checkTrophies(dt: number) {
+  trophyTimer -= dt;
+  if (trophyTimer > 0) return;
+  trophyTimer = 1;
+  const fresh = newlyEarned(trophyRecord(), earned);
+  if (fresh.length === 0) return;
+  fresh.forEach((t, i) => {
+    earned.add(t.id);
+    setTimeout(() => {
+      sfx.unlock();
+      hud.announce(`Trophy: ${t.name}`, t.text);
+    }, 2200 * i);
+  });
+  saveGame();
+}
+
+/** What the mini map shows from `me`'s point of view: landmarks, the objective, angels, dogs and the other player. */
+function mapDots(me: Player): MapDot[] {
+  const dots: MapDot[] = [];
+  const marks = campaign.mapMarks();
+  dots.push({ x: marks.portal.x, z: marks.portal.z, color: '#c060ff', size: 4, shape: 'ring' });
+  dots.push({ x: marks.ruler.x, z: marks.ruler.z, color: '#ff6030', size: 3.5, shape: 'square' });
+  if (marks.chest) dots.push({ x: marks.chest.x, z: marks.chest.z, color: '#ffd040', size: 3, shape: 'square' });
+  for (const f of fighters) {
+    if (!f.alive) continue;
+    if (f.side === 'hell') dots.push({ x: f.pos.x, z: f.pos.z, color: '#60d060', size: 2 });
+    else {
+      const color = f.state === 'alert' ? '#ff3a30' : f.suspicion > 0.3 ? '#ffc040' : '#f0ece0';
+      dots.push({ x: f.pos.x, z: f.pos.z, color, size: f.kind === 'general' ? 5 : f.kind === 'officer' || f.kind === 'traitor' ? 3.2 : 2.4 });
+    }
+  }
+  for (const d of ctx.dogs) dots.push({ x: d.pos.x, z: d.pos.z, color: '#ff8a30', size: 2.2 });
+  if (twoPlayer) {
+    const other = me === player ? player2 : player;
+    dots.push({ x: other.pos.x, z: other.pos.z, color: other === player2 ? '#b080ff' : '#ff5040', size: 4, yaw: (other === player ? cam : cam2).yaw });
+  }
+  const at = campaign.objective().at;
+  if (at) dots.push({ x: at.x, z: at.z, color: '#ffd040', size: 5, shape: 'diamond', pin: true });
+  return dots;
+}
 let heartTimer = 0;
 
 /** Your heart pounds, faster the closer you are to death (below 30% health). */
@@ -859,7 +984,7 @@ function tick(realDt: number) {
   menuNav.update(inputs);
   // With a controller there's no mouse capture: play whenever no menu is open.
   const padPlay = (input.mode === 'gamepad' || IS_XBOX || twoPlayer) && !menuWasOpen && !menuNav.menuOpen;
-  const playing = phase === 'playing' && (input.locked || padPlay || testMode) && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen;
+  const playing = phase === 'playing' && (input.locked || padPlay || testMode) && !hud.rulerOpen && !hud.sideScreenOpen && !hud.endingOpen;
   updateXboxTip(realDt);
   foes.length = 0;
   for (const a of trainingAngels) foes.push(a);
@@ -975,6 +1100,11 @@ function tick(realDt: number) {
   setAmbience(phase === 'menu' ? 0.3 : 1 - lavaNearness(player.pos.x, player.pos.z) / 4);
   for (const a of trainingAngels) a.updateBar(camera);
   for (const f of fighters) f.updateBar(camera, player.pos);
+  if (twoPlayer) {
+    // Player 2 sees the same bars and ? / ! marks in their own half.
+    for (const a of trainingAngels) a.updateBar(camera2, 1, hud2.barLayer, hud2.size);
+    for (const f of fighters) f.updateBar(camera2, player2.pos, 1, hud2.barLayer, hud2.size);
+  }
   if (phase === 'playing') {
     const boss = fighters.find((f) => f.kind === 'general' && f.alive && f.state === 'alert');
     hud.setBoss(boss ? boss.label : null, boss ? boss.hp / boss.maxHp : 0);
@@ -990,6 +1120,11 @@ function tick(realDt: number) {
   hud.padMode = input.mode === 'gamepad' || IS_XBOX;
   hud.update(realDt, player, dog.name, kills);
   updateMusic(realDt);
+  if (phase === 'playing') checkTrophies(realDt);
+  if (phase === 'playing' && settings.minimap) {
+    minimap.update(realDt, player.pos, cam.yaw, () => mapDots(player));
+    if (twoPlayer) minimap2.update(realDt, player2.pos, cam2.yaw, () => mapDots(player2));
+  }
   updateHeartbeat(realDt, playing);
   if (twoPlayer) {
     hud2.update(player2, dog2.name, revivingIn(player2));
@@ -1078,6 +1213,8 @@ Object.assign(window, {
     joinPlayer2,
     leavePlayer2,
     music,
+    trophyRecord,
+    earned,
     get twoPlayer() {
       return twoPlayer;
     },

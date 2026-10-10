@@ -82,6 +82,10 @@ export class Player {
   readonly pos = new THREE.Vector3();
   /** 0 for Player 1, 1 for Player 2 in split screen. */
   slot = 0;
+  /** Multiplies damage taken (the difficulty setting). */
+  damageTaken = 1;
+  /** Multiplies healing between fights (the difficulty setting). */
+  regen = 1;
   /** -1 tiny, 0 normal, 1 huge (from level 30). */
   size: Size = 0;
   /** Smoothly follows the size's scale, for the camera and collisions. */
@@ -370,7 +374,8 @@ export class Player {
     // Health comes back after a while out of harm's way.
     this.sinceHurt += dt;
     const mending = this.armor?.enchant === 'mending';
-    if (this.sinceHurt > (mending ? REGEN_DELAY / 2 : REGEN_DELAY)) this.hp = Math.min(this.maxHp, this.hp + REGEN_RATE * (mending ? 2 : 1) * (this.maxHp / 100) * dt);
+    if (this.sinceHurt > (mending ? REGEN_DELAY / 2 : REGEN_DELAY) / this.regen)
+      this.hp = Math.min(this.maxHp, this.hp + REGEN_RATE * (mending ? 2 : 1) * this.regen * (this.maxHp / 100) * dt);
 
     this.assassinTarget = this.findAssassinTarget(ctx, cam);
     if (!this.breathing) this.updateSwing(dt, ctx, input, cam);
@@ -720,7 +725,7 @@ export class Player {
   /** Damage from an attack. Lava and fire never call this: they can't hurt a demon. */
   takeDamage(amount: number, ctx: GameContext, source?: DamageSource) {
     if (!this.alive) return;
-    amount *= (1 - this.armorReduction) * SIZES[this.size].hurt;
+    amount *= (1 - this.armorReduction) * SIZES[this.size].hurt * this.damageTaken;
     if (source?.holy && this.armor?.enchant === 'ward') amount *= 0.6;
     // Thorns: whoever strikes you up close gets hurt too.
     const attacker = source?.attacker;

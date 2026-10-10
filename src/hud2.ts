@@ -11,6 +11,8 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 export class PlayerTwoHud {
   readonly root = document.createElement('div');
   readonly floaterLayer: HTMLDivElement;
+  /** Angels' health bars and ? / ! marks in Player 2's view. */
+  readonly barLayer: HTMLDivElement;
   /** The size of Player 2's view, for placing damage numbers. */
   readonly size = { w: 1, h: 1 };
   private readonly shown = new Map<string, string>();
@@ -31,11 +33,13 @@ export class PlayerTwoHud {
       <div class="prompt hidden" data-k="prompt"></div>
       <div class="sneak hidden" data-k="sneak">Sneaking</div>
       <div class="down hidden" data-k="down"></div>
+      <div class="bars2"></div>
       <div class="floaters"></div>
       <div class="vignette" data-k="vignette"></div>
       <div class="breath-glow" data-k="breath"></div>`;
     for (const e of this.root.querySelectorAll<HTMLElement>('[data-k]')) this.el[e.dataset.k!] = e;
     this.floaterLayer = this.root.querySelector('.floaters')!;
+    this.barLayer = this.root.querySelector('.bars2')!;
     document.body.appendChild(this.root);
   }
 

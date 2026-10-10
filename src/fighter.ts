@@ -6,6 +6,7 @@ import { sfx, volumeAt } from './audio';
 import { dampAngle, wrapAngle } from './util';
 import type { Foe, GameContext, HellBody } from './types';
 import { viewport } from './viewport';
+import { disposeMerged, mergeRig } from './mergeRig';
 
 /**
  * Everyone who fights on foot: heaven's angels (and the demons who sold out
@@ -146,6 +147,8 @@ export interface SpawnOptions {
   goal?: THREE.Vector3;
   /** Deeper planes' angels are stronger: health, damage and XP times this. */
   power?: number;
+  /** Multiplies health (the difficulty setting). */
+  toughness?: number;
 }
 
 export class Fighter implements Foe, HellBody {
@@ -201,9 +204,8 @@ export class Fighter implements Foe, HellBody {
   private deadTime = 0;
   private hurtSoundTimer = 0;
   private alertShown = 0;
-  private readonly bar: HTMLDivElement;
-  private readonly barFill: HTMLDivElement;
-  private readonly mark: HTMLDivElement;
+  /** Health bar and ? / ! over its head, one set per player's view (Player 2's made when first needed). */
+  private readonly overhead: { bar: HTMLDivElement; fill: HTMLDivElement; mark: HTMLDivElement }[] = [];
   private readonly dropRoll = Math.random();
 
   constructor(
@@ -219,7 +221,7 @@ export class Fighter implements Foe, HellBody {
     this.radius = def.radius;
     this.power = opts.power ?? 1;
     this.damageMult = this.power;
-    this.hp = this.maxHp = Math.round(def.hp * this.power);
+    this.hp = this.maxHp = Math.round(def.hp * this.power * (opts.toughness ?? 1));
     this.label = opts.label ?? null;
     this.pos.set(x, groundAt(x, z, 0.3), z);
     this.home.copy(this.pos);
@@ -231,21 +233,11 @@ export class Fighter implements Foe, HellBody {
     this.root.add(this.h.root);
     this.root.scale.setScalar(def.scale);
     this.dress(def);
+    // One mesh per joint instead of one per box: far fewer draw calls in big fights.
+    this.h.materials = mergeRig(this.root);
     scene.add(this.root);
 
-    this.bar = document.createElement('div');
-    this.bar.className = `enemy-bar ${def.side}${this.label ? ' target' : ''}`;
-    this.barFill = document.createElement('div');
-    this.bar.appendChild(this.barFill);
-    if (this.label) {
-      const name = document.createElement('span');
-      name.textContent = this.label;
-      this.bar.appendChild(name);
-    }
-    barLayer.appendChild(this.bar);
-    this.mark = document.createElement('div');
-    this.mark.className = 'awareness';
-    barLayer.appendChild(this.mark);
+    this.makeOverhead(barLayer);
 
     if (opts.alert) {
       this.state = 'alert';
@@ -1067,19 +1059,44 @@ export class Fighter implements Foe, HellBody {
     }
   }
 
-  /** Health bar (once hurt, or always for mission targets), and ? / ! over its head. */
-  updateBar(camera: THREE.Camera, playerPos: THREE.Vector3) {
+  private makeOverhead(layer: HTMLElement) {
+    const bar = document.createElement('div');
+    bar.className = `enemy-bar ${this.def.side}${this.label ? ' target' : ''}`;
+    const fill = document.createElement('div');
+    bar.appendChild(fill);
+    if (this.label) {
+      const name = document.createElement('span');
+      name.textContent = this.label;
+      bar.appendChild(name);
+    }
+    layer.appendChild(bar);
+    const mark = document.createElement('div');
+    mark.className = 'awareness';
+    layer.appendChild(mark);
+    this.overhead.push({ bar, fill, mark });
+  }
+
+  /**
+   * Health bar (once hurt, or always for mission targets), and ? / ! over its head,
+   * as seen by one player. `view` 1 is Player 2's half of the screen, drawn in `layer`.
+   */
+  updateBar(camera: THREE.Camera, playerPos: THREE.Vector3, view = 0, layer?: HTMLElement, size: { w: number; h: number } = viewport) {
+    if (!this.overhead[view]) {
+      if (!layer) return;
+      this.makeOverhead(layer);
+    }
+    const { bar, fill, mark: markEl } = this.overhead[view];
     const near = this.pos.distanceTo(playerPos) < 45;
     const showBar = this.alive && near && (this.hp < this.maxHp || this.label !== null);
     const head = new THREE.Vector3(this.pos.x, this.pos.y + 2.5 * this.def.scale, this.pos.z).project(camera);
     const onScreen = head.z < 1;
-    const x = (head.x * 0.5 + 0.5) * viewport.w;
-    const y = (-head.y * 0.5 + 0.5) * viewport.h;
+    const x = (head.x * 0.5 + 0.5) * size.w;
+    const y = (-head.y * 0.5 + 0.5) * size.h;
     if (showBar && onScreen) {
-      this.bar.style.display = '';
-      this.bar.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
-      this.barFill.style.width = `${(this.hp / this.maxHp) * 100}%`;
-    } else this.bar.style.display = 'none';
+      bar.style.display = '';
+      bar.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+      fill.style.width = `${(this.hp / this.maxHp) * 100}%`;
+    } else bar.style.display = 'none';
 
     let mark = '';
     if (this.alive && near && this.side === 'heaven') {
@@ -1087,20 +1104,23 @@ export class Fighter implements Foe, HellBody {
       else if (this.state === 'guard' && this.suspicion > 0.05) mark = '?';
     }
     if (mark && onScreen) {
-      this.mark.style.display = '';
-      this.mark.textContent = mark;
-      this.mark.className = `awareness ${mark === '!' ? 'alert' : 'suspicious'}`;
-      this.mark.style.opacity = mark === '?' ? String(0.35 + this.suspicion * 0.65) : '1';
-      this.mark.style.transform = `translate(${x}px, ${y - 22}px) translate(-50%, -50%) scale(${mark === '?' ? 0.8 + this.suspicion * 0.5 : 1.3})`;
-    } else this.mark.style.display = 'none';
+      markEl.style.display = '';
+      markEl.textContent = mark;
+      markEl.className = `awareness ${mark === '!' ? 'alert' : 'suspicious'}`;
+      markEl.style.opacity = mark === '?' ? String(0.35 + this.suspicion * 0.65) : '1';
+      markEl.style.transform = `translate(${x}px, ${y - 22}px) translate(-50%, -50%) scale(${mark === '?' ? 0.8 + this.suspicion * 0.5 : 1.3})`;
+    } else markEl.style.display = 'none';
   }
 
   /** Removes it from the world at once (mission ended). */
   dispose() {
     this.gone = true;
     this.scene.remove(this.root);
-    this.bar.remove();
-    this.mark.remove();
+    disposeMerged(this.root);
+    for (const o of this.overhead) {
+      o.bar.remove();
+      o.mark.remove();
+    }
   }
 }
 

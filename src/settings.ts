@@ -3,6 +3,27 @@
  * device keeps their own choices.
  */
 export type Graphics = 'high' | 'low';
+export type Difficulty = 'easy' | 'normal' | 'hard';
+
+export interface DifficultyProfile {
+  label: string;
+  description: string;
+  /** Multiplies the damage angels do to you. */
+  enemyDamage: number;
+  /** Multiplies angels' health. */
+  enemyHealth: number;
+  /** Multiplies how fast you heal between fights (and shortens the wait). */
+  regen: number;
+  /** Multiplies the XP angels give. */
+  xp: number;
+}
+
+export const DIFFICULTIES: { [d in Difficulty]: DifficultyProfile } = {
+  easy: { label: 'Easy', description: 'Angels hit softer and fall faster. You heal quickly.', enemyDamage: 0.6, enemyHealth: 0.75, regen: 1.6, xp: 1 },
+  normal: { label: 'Normal', description: 'The intended challenge.', enemyDamage: 1, enemyHealth: 1, regen: 1, xp: 1 },
+  hard: { label: 'Hard', description: 'Angels hit harder and take more killing, but give 25% more XP.', enemyDamage: 1.4, enemyHealth: 1.3, regen: 0.8, xp: 1.25 },
+};
+export const DIFFICULTY_ORDER: Difficulty[] = ['easy', 'normal', 'hard'];
 
 export interface Settings {
   /** Look speed multiplier for mouse and trackpad. */
@@ -13,6 +34,9 @@ export interface Settings {
   sfxVolume: number;
   /** 0..1 */
   musicVolume: number;
+  /** The round map in the bottom-right corner. */
+  minimap: boolean;
+  difficulty: Difficulty;
   /** 'low' turns off shadows and renders at a lower resolution, for slower computers. */
   graphics: Graphics;
   /** Device-specific defaults (Low on Xbox) have been applied once. */
@@ -24,7 +48,7 @@ export const IS_XBOX = /xbox/i.test(navigator.userAgent) || new URLSearchParams(
 
 const KEY = 'devilization.settings';
 
-export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, invertY: false, sfxVolume: 0.8, musicVolume: 0.6, graphics: 'high' };
+export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, invertY: false, sfxVolume: 0.8, musicVolume: 0.6, minimap: true, difficulty: 'normal', graphics: 'high' };
 
 export function loadSettings(): Settings {
   const settings = { ...DEFAULT_SETTINGS };
@@ -34,6 +58,8 @@ export function loadSettings(): Settings {
       const parsed = JSON.parse(raw) as Partial<Settings>;
       if (typeof parsed.sensitivity === 'number' && parsed.sensitivity > 0) settings.sensitivity = parsed.sensitivity;
       if (typeof parsed.invertY === 'boolean') settings.invertY = parsed.invertY;
+      if (typeof parsed.minimap === 'boolean') settings.minimap = parsed.minimap;
+      if (parsed.difficulty && DIFFICULTY_ORDER.includes(parsed.difficulty)) settings.difficulty = parsed.difficulty;
       if (parsed.graphics === 'high' || parsed.graphics === 'low') settings.graphics = parsed.graphics;
       if (typeof parsed.sfxVolume === 'number' && parsed.sfxVolume >= 0 && parsed.sfxVolume <= 1) settings.sfxVolume = parsed.sfxVolume;
       if (typeof parsed.musicVolume === 'number' && parsed.musicVolume >= 0 && parsed.musicVolume <= 1) settings.musicVolume = parsed.musicVolume;
