@@ -141,6 +141,8 @@ export class Player {
   /** Where the ball is in the world (set by the view model), for dust when it hits the ground. */
   ballAt: (() => THREE.Vector3) | null = null;
   onLand?: (speed: number) => void;
+  /** Called whenever something hurts you (the controller rumbles). */
+  onHurt?: () => void;
   /** A silent kill from behind. */
   onAssassinate?: (foe: Foe) => void;
 
@@ -509,7 +511,7 @@ export class Player {
 
   /** On wings: hold Space to climb, C to sink. Touch down and you land. */
   private fly(dt: number, input: Input) {
-    const climb = (input.isDown('Space') ? 1 : 0) - (input.sneakHeld ? 1 : 0);
+    const climb = (input.climbHeld ? 1 : 0) - (input.sneakHeld ? 1 : 0);
     this.vel.y += (climb * FLY_CLIMB - this.vel.y) * smoothing(6, dt);
     const ground = groundAt(this.pos.x, this.pos.z, this.radius * 0.7);
     this.pos.y = Math.min(this.pos.y + this.vel.y * dt, ground + FLY_CEILING);
@@ -730,6 +732,7 @@ export class Player {
     this.hurtFlash = Math.min(1, this.hurtFlash + 0.7);
     sfx.hurt();
     ctx.addShake(0.25);
+    this.onHurt?.();
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;

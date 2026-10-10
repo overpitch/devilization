@@ -1053,3 +1053,32 @@ h1.victory {
   max-width: 340px;
   margin: 24px auto;
 }
+
+/* ---------- Controllers ---------- */
+
+/* The control a controller's A button would press. */
+.pad-focus {
+  outline: 3px solid #ffb347 !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 16px rgba(255, 140, 50, 0.55);
+}
+
+.pad-controls {
+  max-width: 520px;
+  margin: 10px auto 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c9a990;
+}
+
+.xbox-tip {
+  max-width: 420px;
+  margin: 22px auto 0;
+  padding: 10px 14px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #e9f5e4;
+  background: rgba(16, 124, 16, 0.35);
+  border: 1px solid rgba(120, 220, 120, 0.5);
+  border-radius: 4px;
+}

@@ -26,6 +26,20 @@ const CONTROLS: [string, string][] = [
   ['Esc', 'Pause: armory, options, return to the lair'],
 ];
 
+const PAD_CONTROLS =
+  'Controller: left stick move · right stick look · RT attack · LT breathe fire · RB ground spikes · A jump (twice to fly, hold to climb) · B sneak or sink · X talk, take, open · Y switch weapon · D-pad left/right shrink/grow · LB sprint · ☰ Menu pause';
+
+/** Key labels for the keyboard and for a controller. */
+const KEYS = {
+  breath: ['F', 'LT'],
+  spikes: ['R', 'RB'],
+  size: ['Z X', '◀ ▶'],
+  fly: ['2× Space', '2× A'],
+  use: ['E', 'X'],
+  attack: ['Click', 'RT'],
+  pause: ['Esc · Pause', '☰ · Pause'],
+} as const;
+
 
 
 const DEMON_NAMES = ['Azgoth', 'Morgrath', 'Vexis', 'Grimtooth', 'Belzar', 'Skarn', 'Maldrek', 'Ashgore', 'Nyxra', 'Krull', 'Zagan', 'Vorr', 'Ignarok', 'Sulvane'];
@@ -102,6 +116,10 @@ export class Hud {
   constructor(settings: Settings) {
     for (const dl of document.querySelectorAll('[data-controls]')) {
       dl.innerHTML = CONTROLS.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+      const pad = document.createElement('p');
+      pad.className = 'pad-controls';
+      pad.textContent = PAD_CONTROLS;
+      dl.after(pad);
     }
     this.makeEmbers();
 
@@ -317,11 +335,11 @@ export class Hud {
 
   /** "E · Take ..." under the crosshair. `assassin` shows the silent-kill prompt instead. */
   setPrompt(text: string | null, assassin = false) {
-    const key = text ? `${assassin}|${text}` : '';
+    const key = text ? `${assassin}|${text}|${this.padMode}` : '';
     this.set('prompt', key, () => {
       this.prompt.classList.toggle('hidden', !text);
       this.prompt.classList.toggle('assassin', assassin);
-      if (text) this.prompt.innerHTML = `<kbd>${assassin ? 'Click' : 'E'}</kbd>${esc(text)}`;
+      if (text) this.prompt.innerHTML = `<kbd>${this.key(assassin ? 'attack' : 'use')}</kbd>${esc(text)}`;
     });
   }
 
@@ -463,7 +481,18 @@ export class Hud {
     apply(value);
   }
 
+  /** Show controller buttons instead of keys (a controller is in use, or this is an Xbox). */
+  padMode = false;
+
+  private key(which: keyof typeof KEYS) {
+    return KEYS[which][this.padMode ? 1 : 0];
+  }
+
   update(dt: number, player: Player, dogName: string, kills: number) {
+    this.set('keys', String(this.padMode), () => {
+      for (const which of ['breath', 'spikes', 'size', 'fly'] as const) $(`power-${which}`).querySelector('.power-key')!.textContent = this.key(which);
+      document.querySelector('#hud .hint')!.textContent = this.key('pause');
+    });
     this.toastTimer -= dt;
     if (this.toastTimer <= 0) this.toastEl.classList.remove('show');
 

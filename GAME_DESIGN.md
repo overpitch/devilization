@@ -151,6 +151,8 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 | Map | `M` |
 | Pause (Armory, Options) | `Esc` |
 
+With a controller (standard layout, including Edge on Xbox): left stick moves, right stick looks, RT attacks, LT breathes fire, RB aims spikes, A jumps (twice to fly, hold to climb), B sneaks or sinks, X uses things, Y switches weapon, D-pad left/right shrinks and grows, LB or a left-stick click sprints, and ☰ Menu pauses. In menus the D-pad or left stick moves a highlight, A presses and B goes back.
+
 ## Build phases
 
 1. ✅ **Core feel:** first-person camera, plane 1 terrain (lava rivers, fire geysers), spiked-flail combat against chained training angels, and the dog following and attacking (bite and horn charge).
@@ -160,7 +162,7 @@ Each plane has its own look. Plane 1 is the one you described; the others are wo
 5. ✅ **Planes 2–5:** travel between planes (descending, and going back up), promotions through the ranks, and four new planes (ash wastes, bone forest, sulfur swamps, obsidian city), each with its own look, ruler, missions and treasure chest.
 6. ✅ **Planes 6–9, size and flight:** four more planes (chain canyons, frozen hell, burning sky, the Abyss), changing size at level 30, flight at level 40, and puzzles that need you tiny or huge.
 7. ✅ **Plane 10 and the ending:** the war camp fortress, the general (summons 10 angels at half health), the Demon Lord ending, and endless missions (side missions on every plane, including Heaven's Counterattack).
-8. **Controllers and Xbox:** play with a controller, including Microsoft Edge on Xbox: game controls, menus driven by the controller, lower graphics on Xbox, and Back that doesn't leave the game.
+8. ✅ **Controllers and Xbox:** play with a controller, including Microsoft Edge on Xbox: game controls, menus driven by the controller, lower graphics on Xbox, and Back that doesn't leave the game.
 9. **Two-player split screen:** a second demon (with its own dog) on a controller, sharing the screen side by side.
 10. **Polish:** music, sound, balancing, title screen.
 

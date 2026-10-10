@@ -17,7 +17,8 @@ import { Hud } from './hud';
 import { Particles } from './particles';
 import { Floaters } from './floaters';
 import { initAudio, setAmbience, setBreathing, setVolume, sfx } from './audio';
-import { loadSettings, saveSettings, type Settings } from './settings';
+import { IS_XBOX, loadSettings, saveSettings, type Settings } from './settings';
+import { MenuNavigator } from './menuNav';
 import { Spikes } from './powers';
 import { Pickups } from './pickups';
 import { loadSave, newSave, useTestSaveSlot, writeSave, type SaveData } from './save';
@@ -59,6 +60,7 @@ const dog = new Dog(scene);
 const viewModel = new ViewModel();
 const cam = new FirstPersonCamera(camera);
 const input = new Input(renderer.domElement);
+const menuNav = new MenuNavigator();
 const hud = new Hud(settings);
 const floaters = new Floaters(hud.floaterLayer);
 const armory = new Armory();
@@ -66,6 +68,7 @@ let armoryTab: ArmoryTab = 'weapons';
 
 player.ballAt = () => viewModel.ballWorld;
 player.onLand = (speed) => cam.addShake(Math.min(speed / 50, 0.3));
+player.onHurt = () => input.rumble(0.7, 180);
 
 /** What you've achieved across every plane. */
 const progress: Progress = { done: new Set(), chests: new Set(), talked: new Set(), sideDone: 0 };
@@ -88,7 +91,8 @@ function applySettings(s: Settings) {
   cam.invertY = s.invertY;
   setVolume(s.sfxVolume);
   const low = s.graphics === 'low';
-  renderer.setPixelRatio(low ? Math.min(window.devicePixelRatio, 1) : Math.min(window.devicePixelRatio, 2));
+  // Xbox browsers are slow at filling pixels: on Low they draw at three quarters resolution.
+  renderer.setPixelRatio(low ? Math.min(window.devicePixelRatio, 1) * (IS_XBOX ? 0.75 : 1) : Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   world?.setShadows(!low);
 }
@@ -119,6 +123,7 @@ const ctx: GameContext = {
   floatText: (at, text, kind) => floaters.spawn(at, text, kind),
   addShake: (amount) => cam.addShake(amount),
   hitStop: (seconds) => {
+    input.rumble(seconds > 0.08 ? 0.5 : 0.3, 90);
     hitStopTimer = Math.max(hitStopTimer, seconds);
   },
   onFoeKilled: (foe) => {
@@ -344,9 +349,14 @@ function lockPointer() {
   initAudio();
   (document.activeElement as HTMLElement | null)?.blur();
   if (testMode) return;
+  // A controller (and any Xbox, where the browser can't capture the mouse) just closes the menu.
+  if (input.mode === 'gamepad' || IS_XBOX) {
+    hud.showPause(false);
+    return;
+  }
   input.requestLock();
   setTimeout(() => {
-    if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) hud.showPause(true);
+    if (phase === 'playing' && !input.locked && input.mode === 'mouse' && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) hud.showPause(true);
   }, 1200);
 }
 
@@ -463,7 +473,7 @@ hud.onSettings = (s) => {
 };
 input.onLockChange = (locked) => {
   if (locked) hud.showPause(false);
-  else if (phase === 'playing' && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) {
+  else if (phase === 'playing' && input.mode === 'mouse' && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) {
     player.stopPowers(ctx);
     saveGame();
     hud.showPause(true);
@@ -472,12 +482,59 @@ input.onLockChange = (locked) => {
 window.addEventListener('beforeunload', saveGame);
 // Clicking the game while paused resumes it.
 renderer.domElement.addEventListener('click', () => {
-  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen) lockPointer();
+  if (phase === 'playing' && !input.locked && player.alive && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen && !IS_XBOX) {
+    input.mode = 'mouse';
+    lockPointer();
+  }
 });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && hud.rulerOpen) closeRuler();
   else if (e.code === 'Escape' && hud.armoryOpen) closeArmory();
 });
+
+/** Stops play and shows the pause menu (the Menu button, or a controller player leaving the mouse). */
+function pauseGame() {
+  player.stopPowers(ctx);
+  saveGame();
+  if (document.pointerLockElement) document.exitPointerLock();
+  hud.showPause(true);
+}
+
+const XBOX_TIP = 'Hold the ☰ Menu button for a second to switch the controller to game controls';
+let xboxTipTimer = 0;
+
+// Console browsers scroll the page with the right stick; there's nothing to scroll, so ignore it.
+window.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+
+if (IS_XBOX) {
+  // Edge on Xbox maps the controller's B button to browser Back. Keep an extra
+  // history entry on top so Back stays on the game. Browsers ignore entries
+  // added without a click or key press, so it's (re)armed on real input.
+  let guarded = false;
+  const guard = () => {
+    if (guarded) return;
+    history.pushState({ devilization: true }, '');
+    guarded = true;
+  };
+  for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, guard);
+  window.addEventListener('popstate', () => {
+    guarded = false;
+    guard();
+    hud.announce('Still here!', XBOX_TIP);
+  });
+  document.getElementById('xbox-tip')!.classList.remove('hidden');
+}
+
+/** On Xbox, if the demon isn't getting controller input but the cursor is moving, explain how to switch. */
+function updateXboxTip(dt: number) {
+  if (!IS_XBOX || phase !== 'playing') return;
+  xboxTipTimer -= dt;
+  const now = performance.now();
+  if (xboxTipTimer <= 0 && now - input.lastMouseMove < 1500 && now - input.lastPadInput > 3000) {
+    hud.announce('Controller', XBOX_TIP);
+    xboxTipTimer = 20;
+  }
+}
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -562,7 +619,19 @@ function nearestInteractable(): Interactable | null {
 
 /** Advances the game by one frame of `realDt` seconds. */
 function tick(realDt: number) {
-  const playing = phase === 'playing' && (input.locked || testMode) && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen;
+  input.poll(realDt);
+  // The Menu button opens and closes the pause menu; the menus themselves are driven by the d-pad, A and B.
+  if (input.pausePressed && phase === 'playing' && player.alive) {
+    if (hud.pauseOpen) lockPointer();
+    else if (!menuNav.menuOpen) pauseGame();
+  }
+  // A press that works a menu shouldn't also act in the game the moment the menu closes.
+  const menuWasOpen = menuNav.menuOpen;
+  menuNav.update([input]);
+  // With a controller there's no mouse capture: play whenever no menu is open.
+  const padPlay = (input.mode === 'gamepad' || IS_XBOX) && !menuWasOpen && !menuNav.menuOpen;
+  const playing = phase === 'playing' && (input.locked || padPlay || testMode) && !hud.rulerOpen && !hud.armoryOpen && !hud.endingOpen;
+  updateXboxTip(realDt);
   foes.length = 0;
   for (const a of trainingAngels) foes.push(a);
   for (const f of fighters) if (f.side === 'heaven') foes.push(f);
@@ -574,7 +643,7 @@ function tick(realDt: number) {
       saveTimer = 0;
       saveGame();
     }
-    cam.applyInput(input);
+    cam.applyInput(input, realDt);
     let dt = realDt;
     // Hit-stop: freeze the action for a moment when a blow lands.
     if (hitStopTimer > 0) {
@@ -657,6 +726,7 @@ function tick(realDt: number) {
       hud.setLairButton(can.ok, can.reason);
     }
   }
+  hud.padMode = input.mode === 'gamepad' || IS_XBOX;
   hud.update(realDt, player, dog.name, kills);
   input.endFrame();
 }

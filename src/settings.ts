@@ -13,7 +13,12 @@ export interface Settings {
   sfxVolume: number;
   /** 'low' turns off shadows and renders at a lower resolution, for slower computers. */
   graphics: Graphics;
+  /** Device-specific defaults (Low on Xbox) have been applied once. */
+  deviceDefaults?: boolean;
 }
+
+/** Xbox browsers have tight limits, so they start on Low graphics. ?xbox pretends to be one (for testing). */
+export const IS_XBOX = /xbox/i.test(navigator.userAgent) || new URLSearchParams(location.search).has('xbox');
 
 const KEY = 'devilization.settings';
 
@@ -29,9 +34,16 @@ export function loadSettings(): Settings {
       if (typeof parsed.invertY === 'boolean') settings.invertY = parsed.invertY;
       if (parsed.graphics === 'high' || parsed.graphics === 'low') settings.graphics = parsed.graphics;
       if (typeof parsed.sfxVolume === 'number' && parsed.sfxVolume >= 0 && parsed.sfxVolume <= 1) settings.sfxVolume = parsed.sfxVolume;
+      settings.deviceDefaults = parsed.deviceDefaults === true;
     }
   } catch {
     /* storage unavailable or corrupt: use defaults */
+  }
+  // An Xbox starts on Low once; players can switch back in the pause menu.
+  if (!settings.deviceDefaults) {
+    if (IS_XBOX) settings.graphics = 'low';
+    settings.deviceDefaults = true;
+    saveSettings(settings);
   }
   return settings;
 }

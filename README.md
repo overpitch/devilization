@@ -29,7 +29,36 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 | Sprint | `Shift` |
 | Pause (Armory, Options, Return to the lair) | `Esc` |
 
+### With a controller
+
+Any standard controller works (Xbox, PlayStation, and others), including **Microsoft Edge on Xbox**.
+
+| Action | Button |
+|---|---|
+| Move / look | Left stick / right stick |
+| Attack | RT |
+| Breathe fire | Hold LT |
+| Ground spikes | Hold RB to aim, let go to strike |
+| Jump; take off or land | A; A twice (hold A to climb) |
+| Sneak; sink while flying | Hold B |
+| Talk, take, open | X |
+| Switch weapon | Y or D-pad up |
+| Shrink / grow | D-pad left / right |
+| Sprint | LB or click the left stick |
+| Pause | ☰ Menu |
+
+In menus, the D-pad or left stick moves the highlight, A presses and B goes back.
+
+**On Xbox:** open the game in Microsoft Edge, then hold the ☰ Menu button for a second to switch the controller from moving a cursor to game controls. The game starts on Low graphics there, and B won't take you off the page.
+
 ## What's in so far
+
+### Phase 8
+
+- **Controllers:** play the whole game with a controller: moving, looking (with a curve for fine aim), every attack and power, and rumble when you land blows or get hurt.
+- **Menus by controller:** the D-pad or left stick moves a highlight through every screen (title, naming, intro, pause, options, armory, rulers, the Hellgate, death and the ending); A presses, B goes back, and left/right adjusts sliders and switches.
+- **Prompts and power slots** show controller buttons (X, RT, LT…) while you're using one.
+- **Xbox (Microsoft Edge):** a tip on the title screen explains how to switch the controller to game controls; B (which Edge treats as Back) no longer leaves the game; Low graphics by default and a lower render resolution so it runs smoothly. `?xbox` pretends to be an Xbox for testing.
 
 ### Phase 7
 
@@ -116,6 +145,7 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 
 - **`?test`** skips the title and plays without pointer lock.
 - **`?stats`** shows frame rate, draw calls and triangles.
+- **`?xbox`** behaves as if on an Xbox (controller tip, Low graphics, no pointer lock).
 - **`?level=15`** starts you at level 15, to try out the powers. This changes your saved game.
 - **`__game.setLevel(n)`** in the console jumps to a level.
 - In the browser console, `__game` exposes the player, dog, angels, geysers and camera:
@@ -150,5 +180,6 @@ Then go to http://localhost:5173, choose **New Game**, name your demon and your 
 | `src/floaters.ts` | Floating damage numbers |
 | `src/audio.ts` | Synthesized sound effects and the low roar of the plains |
 | `src/hud.ts` | Status bars, power slots, and the title, naming, intro, pause and death screens |
-| `src/input.ts` | Keyboard and pointer-lock mouse |
+| `src/input.ts` | Keyboard, pointer-lock mouse and controllers |
+| `src/menuNav.ts` | Driving the menus with a controller |
 | `src/settings.ts` | Saved options |
