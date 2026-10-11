@@ -181,7 +181,7 @@ export class Fighter implements Foe, HellBody {
   suspicion = 0;
   /** Hired imps follow this (their leader's position). */
   readonly escort: (() => THREE.Vector3) | null;
-  private readonly escortSlot: number;
+  readonly escortSlot: number;
   /** The demon it's most suspicious of. */
   private noticed: { readonly pos: THREE.Vector3 } = { pos: new THREE.Vector3() };
   readonly label: string | null;

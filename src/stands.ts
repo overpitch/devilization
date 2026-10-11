@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { addCollider, groundAt } from './world';
+import { addCollider, groundAt, heightAt, isLava } from './world';
+import { SPAWN } from './layout';
 import { createHumanoid } from './character';
 import { mergeRig } from './mergeRig';
 import type { ArmoryTab } from './armory';
@@ -33,7 +34,14 @@ export const STANDS: StandDef[] = [
 
 /** The stalls stand in a row at this x, facing east into the courtyard. */
 const ROW_X = -11.5;
-const ROW_Z = [-25, -20, -15, -10];
+/** Places along the row a stall can go, nearest the throne first; each plane uses the first four that are dry and level. */
+const ROW_Z = [-25, -20, -15, -10, -5, 0, 5, -30];
+
+/** No liquid under the stall or its counter, and about as high as where you arrive. */
+function goodSpot(z: number) {
+  const h = heightAt(SPAWN.x, SPAWN.z);
+  return [-12.7, -11.5, -10.3, -9.1].every((x) => [-1.6, 0, 1.6].every((dz) => !isLava(x, z + dz) && Math.abs(heightAt(x, z + dz) - h) < 1.5));
+}
 
 const box = new THREE.BoxGeometry(1, 1, 1);
 const lambert = (color: number) => new THREE.MeshLambertMaterial({ color, flatShading: true });
@@ -49,8 +57,11 @@ export function buildStands(root: THREE.Object3D): StandSpot[] {
   const wood = lambert(0x3a2418);
   const dark = lambert(0x24160e);
   const spots: StandSpot[] = [];
+  const free = ROW_Z.filter(goodSpot);
+  // (Every plane has at least four; the fallback keeps the old row if one ever doesn't.)
+  const row = free.length >= STANDS.length ? free : ROW_Z;
   STANDS.forEach((def, i) => {
-    const z = ROW_Z[i];
+    const z = row[i];
     const y = groundAt(ROW_X, z, 1.6);
     const g = new THREE.Group();
     g.position.set(ROW_X, y, z);

@@ -111,8 +111,9 @@ let armoryTab: ArmoryTab = 'weapons';
 /** The trading stand being browsed (null: the armory from the pause menu), and who is shopping. */
 let armoryStand: StandId | null = null;
 let shopper: Player = player;
-/** The stalls in this plane's lair. */
+/** The stalls in this plane's lair, and the counters you can walk up to. */
 let stands: StandSpot[] = [];
+let standSpots: Interactable[] = [];
 /** Imps hired at the Imp Pens (saved), and the ones following you on this plane. */
 let hiredImps = 0;
 let impFollowers: Fighter[] = [];
@@ -304,6 +305,7 @@ function buildPlane(index: number) {
   scene.add(planeRoot);
   world = createWorld(scene, planeRoot);
   stands = buildStands(planeRoot);
+  standSpots = stands.map((st) => ({ pos: st.pos, label: `Browse ${st.def.name}`, range: 2.8, kind: 'stand', stand: st.def.id, act: () => {} }));
   impFollowers = [];
   world.setShadows(settings.graphics !== 'low');
   geysers = new Geysers(planeRoot);
@@ -697,7 +699,15 @@ function openStand(id: StandId, who: Player) {
 /** Whoever the hired imps follow: Player 1, or Player 2 while Player 1 is down. */
 const impLeader = () => (player.alive || !twoPlayer || !player2.alive ? player.pos : player2.pos);
 
-function spawnImp(slot: number) {
+/** The lowest place in the ring around you that no living imp holds. */
+function freeImpSlot() {
+  const taken = new Set(impFollowers.filter((f) => f.alive).map((f) => f.escortSlot));
+  let slot = 0;
+  while (taken.has(slot)) slot++;
+  return slot;
+}
+
+function spawnImp(slot = freeImpSlot()) {
   const lead = impLeader();
   const a = slot * 1.26 + 2.2;
   const imp = spawnFighter('imp', lead.x + Math.sin(a) * 2.6, lead.z + Math.cos(a) * 2.6, { escort: impLeader, escortSlot: slot });
@@ -708,18 +718,18 @@ function spawnImp(slot: number) {
 /** Hires one more imp at the Imp Pens. */
 function hireImp() {
   hiredImps++;
-  spawnImp(impFollowers.length);
+  spawnImp();
 }
 
 /** After arriving (a new plane, or back at the lair): every hired imp at your side. */
 function gatherImps() {
   impFollowers = impFollowers.filter((f) => f.alive && !f.gone);
   const lead = impLeader();
-  impFollowers.forEach((f, i) => {
-    const a = i * 1.26 + 2.2;
+  impFollowers.forEach((f) => {
+    const a = f.escortSlot * 1.26 + 2.2;
     f.pos.set(lead.x + Math.sin(a) * 2.6, f.pos.y, lead.z + Math.cos(a) * 2.6);
   });
-  while (impFollowers.length < hiredImps) spawnImp(impFollowers.length);
+  while (impFollowers.length < hiredImps) spawnImp();
 }
 
 /** A hired imp that falls is gone for good. */
@@ -906,7 +916,7 @@ renderer.domElement.addEventListener('click', () => {
 });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && hud.rulerOpen) closeRuler();
-  else if (e.code === 'Escape' && hud.armoryOpen) closeArmory();
+  else if (e.code === 'Escape' && hud.armoryOpen && (!shopHalf() || shopper === player)) closeArmory();
   else if (e.code === 'Escape' && hud.trophiesOpen) closeTrophies();
   else if (e.code === 'Escape' && hud.mapOpen) closeMap();
 });
@@ -1018,7 +1028,6 @@ function nearestInteractable(player: Player, cam: FirstPersonCamera): Interactab
   let best: Interactable | null = null;
   let bestScore = Infinity;
   cam.lookDir(lookDir);
-  const standSpots: Interactable[] = stands.map((st) => ({ pos: st.pos, label: `Browse ${st.def.name}`, range: 2.8, kind: 'stand', stand: st.def.id, act: () => {} }));
   for (const i of [...campaign.interactables(ctx, (w) => takeWeapon(w, player)), ...standSpots]) {
     const dx = i.pos.x - player.pos.x;
     const dz = i.pos.z - player.pos.z;
@@ -1206,8 +1215,9 @@ function tick(realDt: number) {
       }
       const target = nearestInteractable(v.p, v.c);
       if (v.p.assassinTarget) v.prompt('Kill silently', true);
-      else v.prompt(target?.label ?? null);
-      if (target && v.i.interactPressed) {
+      else v.prompt(halfShop && target?.kind ? null : (target?.label ?? null));
+      // While the other player shops, dialogs wait: only one menu can take input at a time.
+      if (target && v.i.interactPressed && !(halfShop && target.kind)) {
         if (target.kind === 'ruler') openRuler();
         else if (target.kind === 'portal') openPortal();
         else if (target.kind === 'stand') openStand(target.stand!, v.p);
@@ -1391,6 +1401,13 @@ Object.assign(window, {
     music,
     trophyRecord,
     earned,
+    get stands() {
+      return stands;
+    },
+    hireImp,
+    get impFollowers() {
+      return impFollowers;
+    },
     get twoPlayer() {
       return twoPlayer;
     },
