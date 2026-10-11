@@ -123,7 +123,7 @@ player.onHurt = () => input.rumble(0.7, 180);
 
 
 /** What you've achieved across every plane. */
-const progress: Progress = { done: new Set(), chests: new Set(), talked: new Set(), sideDone: 0 };
+const progress: Progress = { done: new Set(), chests: new Set(), talked: new Set(), sideDone: 0, missionSeed: null };
 /** For the bestiary and trophies. */
 let killsByKind: { [kind: string]: number } = {};
 let silentKills = 0;
@@ -400,6 +400,7 @@ function saveGame() {
     player2: twoPlayer ? player2Save() : savedP2,
     potions: player.potions,
     imps: hiredImps,
+    missionSeed: progress.missionSeed,
     savedAt: Date.now(),
   });
 }
@@ -431,6 +432,7 @@ function enterWorld(save: SaveData) {
   progress.chests = new Set(save.chests);
   progress.talked = new Set(save.talkedPlanes);
   progress.sideDone = save.sideDone;
+  progress.missionSeed = save.missionSeed;
   killsByKind = { ...save.killsByKind };
   silentKills = save.silentKills;
   deepest = save.deepest;

@@ -1,3 +1,4 @@
+import { newMissionSeed } from './missionGen';
 import { isArmor, isWeapon, STARTING_WEAPON, type Armor, type Weapon } from './weapons';
 
 /** The saved game, kept in this browser. */
@@ -39,6 +40,8 @@ export interface SaveData {
   potions: number;
   /** Hired imps following you. */
   imps: number;
+  /** Main missions are made from this; a new game gets a new one (null: an older save's hand-written missions). */
+  missionSeed: number | null;
   savedAt: number;
 }
 
@@ -70,6 +73,7 @@ const LATER_FIELDS = () => ({
   player2: null as Player2Save | null,
   potions: 0,
   imps: 0,
+  missionSeed: null as number | null,
 });
 
 let key = 'devilization.save';
@@ -80,7 +84,7 @@ export function useTestSaveSlot() {
 }
 
 export function newSave(name: string, dogName: string): SaveData {
-  return { version: 1, name, dogName, level: 1, xp: 0, gold: 0, kills: 0, rank: 0, playTime: 0, ...LATER_FIELDS(), savedAt: Date.now() };
+  return { version: 1, name, dogName, level: 1, xp: 0, gold: 0, kills: 0, rank: 0, playTime: 0, ...LATER_FIELDS(), missionSeed: newMissionSeed(), savedAt: Date.now() };
 }
 
 export function loadSave(): SaveData | null {
@@ -123,6 +127,7 @@ export function loadSave(): SaveData | null {
     const count = (v: unknown) => (typeof v === 'number' && v >= 0 ? Math.min(5, Math.floor(v)) : 0);
     save.potions = count(save.potions);
     save.imps = count(save.imps);
+    if (!Number.isInteger(save.missionSeed)) save.missionSeed = null;
     return save;
   } catch {
     return null;

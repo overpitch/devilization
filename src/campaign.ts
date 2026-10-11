@@ -8,6 +8,7 @@ import { ALL_PLANE_NAMES, BUILT_PLANES, PLANES, plane, type PlaneDef } from './p
 import { sfx } from './audio';
 import { RANKS } from './progression';
 import type { GameContext } from './types';
+import { generateMissions, type Guards, type MissionSet } from './missionGen';
 
 /**
  * A plane's story: its ruler and missions, the angels' camp and watchpost,
@@ -27,6 +28,8 @@ export interface Progress {
   /** Planes whose ruler you've met. */
   talked: Set<number>;
   sideDone: number;
+  /** This game's mission seed: main missions are made from it (null: an older save's hand-written missions). */
+  missionSeed: number | null;
 }
 
 export interface Offer {
@@ -64,7 +67,7 @@ interface Running {
   /** Nobody raised the alarm before the target died. */
   unseen: boolean;
   /** War missions: where you hold, and where the angels come from. */
-  war: { defend: { x: number; z: number }; from: { x: number; z: number } } | null;
+  war: { defend: { x: number; z: number }; from: { x: number; z: number }; waves?: FighterKind[][]; imps?: number; captain?: string } | null;
 }
 
 export interface Interactable {
@@ -229,12 +232,16 @@ export class Campaign {
   private time = 0;
   private playerPos = new THREE.Vector3();
 
+  /** This plane's main missions: made from the game's mission seed, or the plane's own for older saves. */
+  private readonly m: MissionSet;
+
   constructor(
     private readonly root: THREE.Object3D,
     private readonly progress: Progress,
     private readonly hooks: CampaignHooks,
   ) {
     this.plane = plane();
+    this.m = progress.missionSeed !== null && !this.plane.finale ? generateMissions(this.plane, progress.missionSeed) : this.plane.missions;
     this.ruler = new Ruler(root, this.plane);
     this.buildCamp();
     this.buildWatchpost();
@@ -264,7 +271,7 @@ export class Campaign {
 
   /** The angels' camp: white tents, a holy banner, and the altar where the stolen treasure sits. */
   private buildCamp() {
-    const c = this.plane.missions.retrieve.camp;
+    const c = this.m.retrieve.camp;
     const g = new THREE.Group();
     const cloth = lambert(0xf2eee2);
     const gold = lambert(0xd9b24a);
@@ -293,7 +300,7 @@ export class Campaign {
 
   /** The angels' white stone watchpost, where the assassination target waits. */
   private buildWatchpost() {
-    const post = this.plane.missions.assassinate.post;
+    const post = this.m.assassinate.post;
     const g = new THREE.Group();
     const stone = lambert(0xe8e4da);
     const gold = lambert(0xd9b24a);
@@ -426,7 +433,7 @@ export class Campaign {
       const m = p.finale.mission;
       return [{ id: `${p.index}:${m.id}`, title: m.title, kind: 'war', main: true, brief: m.brief, praise: m.praise, reward: { xp: 0, gold: 2000 } }];
     }
-    const m = p.missions;
+    const m = this.m;
     const reward = { xp: Math.round(150 * p.power), gold: Math.round(120 * p.power) };
     return [
       { id: `${p.index}:${m.war.id}`, title: m.war.title, kind: 'war', main: true, brief: m.war.brief, praise: m.war.praise, reward },
@@ -556,9 +563,13 @@ export class Campaign {
         const a = phase + (i / n) * Math.PI * 2;
         return new THREE.Vector3(cx + Math.sin(a) * r, 0, cz + Math.cos(a) * r);
       });
-    const m = this.plane.missions;
+    const m = this.m;
 
-    if (o.main && o.kind === 'retrieve') {
+    if (o.main && o.kind === 'retrieve' && m.retrieve.guards) {
+      const c = m.retrieve.camp;
+      this.placeGuards(c, m.retrieve.guards, spawn, ring, 7);
+      run.item = this.makeItem(m.retrieve.item.name, m.retrieve.item.look, m.retrieve.item.color, c.x, c.z, 1.0);
+    } else if (o.main && o.kind === 'retrieve') {
       const c = m.retrieve.camp;
       spawn('footsoldier', c.x - 6, c.z, { patrol: ring(c.x, c.z, 7, 4) });
       spawn('footsoldier', c.x + 6, c.z, { patrol: ring(c.x, c.z, 7, 4, Math.PI) });
@@ -572,15 +583,18 @@ export class Campaign {
     } else if (o.main && o.kind === 'assassinate') {
       const t = m.assassinate.post;
       run.target = spawn(m.assassinate.target.kind, t.x, t.z, { facing: Math.PI * 0.75, label: m.assassinate.target.label });
+      if (m.assassinate.guards) this.placeGuards(t, m.assassinate.guards, spawn, ring, 6);
+      else {
       spawn('footsoldier', t.x + 4, t.z - 4, { patrol: ring(t.x, t.z, 6, 5) });
       spawn('footsoldier', t.x - 3, t.z + 5, { facing: 0.3 });
       spawn('archer', t.x - 4, t.z + 1, { facing: Math.PI });
       if (this.plane.index >= 3) spawn('priest', t.x + 2, t.z + 3, { facing: Math.PI });
+      }
     } else if (o.main && this.plane.finale) {
       this.garrison(run);
     } else if (o.main && o.kind === 'war') {
       // The imps and the waves arrive once you reach the battlefield.
-      run.war = { defend: m.war.defend, from: m.war.from };
+      run.war = { defend: m.war.defend, from: m.war.from, waves: m.war.waves, imps: m.war.imps, captain: m.war.captain };
     } else if (o.spot) {
       const { x, z } = o.spot;
       if (o.template === 'assault') {
@@ -605,6 +619,27 @@ export class Campaign {
     this.hooks.toast(`Mission: ${o.title}`);
     this.hooks.refreshDialog();
     this.hooks.save();
+  }
+
+  /** Guards for a made-up mission: footsoldiers patrolling a ring, archers posted around it, priests and captains in the middle. */
+  private placeGuards(
+    c: { x: number; z: number },
+    g: Guards,
+    spawn: (kind: FighterKind, x: number, z: number, opts?: SpawnOptions) => Fighter,
+    ring: (cx: number, cz: number, r: number, n: number, phase?: number) => THREE.Vector3[],
+    radius: number,
+  ) {
+    for (let i = 0; i < g.footsoldiers; i++) {
+      const a = (i / g.footsoldiers) * Math.PI * 2;
+      if (i < 2) spawn('footsoldier', c.x + Math.sin(a) * (radius - 1), c.z + Math.cos(a) * (radius - 1), { patrol: ring(c.x, c.z, radius, 4, a) });
+      else spawn('footsoldier', c.x + Math.sin(a) * (radius - 1), c.z + Math.cos(a) * (radius - 1), { facing: a });
+    }
+    for (let i = 0; i < g.archers; i++) {
+      const a = 0.9 + i * 2.3;
+      spawn('archer', c.x + Math.sin(a) * radius, c.z + Math.cos(a) * radius, { facing: a });
+    }
+    for (let i = 0; i < g.priests; i++) spawn('priest', c.x + Math.sin(i * 3) * 1.8, c.z + Math.cos(i * 3) * 1.8 - 1, { facing: Math.PI });
+    for (let i = 0; i < g.officers; i++) spawn('officer', c.x - 2 - i * 2, c.z + 2, { facing: 0.5 });
   }
 
   /**
@@ -785,7 +820,7 @@ export class Campaign {
     if (a.phase === 'go') {
       if (Math.hypot(this.playerPos.x - d.x, this.playerPos.z - d.z) > 14) return;
       a.phase = 'fight';
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < (w.imps ?? 6); i++) {
         const across = (i % 3) * 3 - 3;
         const back = 2 + Math.floor(i / 3) * 2;
         const imp = this.hooks.spawn('imp', d.x + side.x * across - toward.x * back, d.z + side.y * across - toward.y * back, { facing: Math.atan2(toward.x, toward.y) });
@@ -798,7 +833,12 @@ export class Campaign {
     }
     const left = a.fighters.filter((f) => f.alive).length;
     if (left > 0) return;
-    if (a.wave >= 3) {
+    const waves: FighterKind[][] = w.waves ?? [
+      ['footsoldier', 'footsoldier', 'footsoldier', 'footsoldier'],
+      ['footsoldier', 'footsoldier', 'footsoldier', 'archer', 'archer'],
+      ['officer', 'footsoldier', 'footsoldier', 'footsoldier', 'priest', 'archer'],
+    ];
+    if (a.wave >= waves.length) {
       this.objectiveDone(a, 'The line held');
       return;
     }
@@ -807,22 +847,17 @@ export class Campaign {
     a.wave++;
     a.waveTimer = 4;
     sfx.warHorn();
-    const waves: FighterKind[][] = [
-      ['footsoldier', 'footsoldier', 'footsoldier', 'footsoldier'],
-      ['footsoldier', 'footsoldier', 'footsoldier', 'archer', 'archer'],
-      ['officer', 'footsoldier', 'footsoldier', 'footsoldier', 'priest', 'archer'],
-    ];
     const goal = new THREE.Vector3(d.x, 0, d.z);
-    const captain = CAPTAIN_NAMES[this.plane.index % CAPTAIN_NAMES.length];
+    const captain = w.captain ?? `Captain ${CAPTAIN_NAMES[this.plane.index % CAPTAIN_NAMES.length]}`;
     waves[a.wave - 1].forEach((kind, i) => {
       const across = (i % 4) * 2.5 - 3.75;
       const back = Math.floor(i / 4) * 2.5;
       const x = w.from.x + side.x * across + toward.x * back;
       const z = w.from.z + side.y * across + toward.y * back;
-      const f = this.hooks.spawn(this.deepen(kind), x, z, { alert: true, goal, facing: Math.atan2(-toward.x, -toward.y), label: kind === 'officer' ? `Captain ${captain}` : undefined });
+      const f = this.hooks.spawn(this.deepen(kind), x, z, { alert: true, goal, facing: Math.atan2(-toward.x, -toward.y), label: kind === 'officer' ? captain : undefined });
       a.fighters.push(f);
     });
-    this.hooks.toast(`Wave ${a.wave} of 3: the angels are coming!`);
+    this.hooks.toast(`Wave ${a.wave} of ${waves.length}: the angels are coming!`);
   }
 
   /** Angel patrols roaming the plane between missions; they return a while after being wiped out. */
@@ -856,7 +891,8 @@ export class Campaign {
   travelDialog(rank: number, level: number): Dialog {
     // The war camp opens when the Abyss is cleared and you're level 50.
     const abyss = PLANES[8];
-    const abyssDone = [abyss.missions.war.id, abyss.missions.retrieve.id, abyss.missions.assassinate.id].every((id) => this.progress.done.has(`9:${id}`));
+    const abyssIds = this.progress.missionSeed !== null ? ['war', 'retrieve', 'assassinate'] : [abyss.missions.war.id, abyss.missions.retrieve.id, abyss.missions.assassinate.id];
+    const abyssDone = abyssIds.every((id) => this.progress.done.has(`9:${id}`));
     const cards: Dialog['cards'] = ALL_PLANE_NAMES.map((name, i) => {
       const index = i + 1;
       const here = index === this.plane.index;

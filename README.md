@@ -71,6 +71,7 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 - **Difficulty** (Pause → Difficulty): **Easy** (angels hit 40% softer and have 25% less health; you heal faster), **Normal** (angels hit 25% harder and have 20% more health than before), **Hard** (70% harder hits, 50% more health, slow healing, 25% more XP) or **Nightmare** (2.3× hits, twice the health, very slow healing, 50% more XP). Damage changes at once; angels' health changes for angels that appear afterwards.
 - **Trophies and bestiary** (Pause → Trophies): 19 trophies with progress, from First Blood to Demon Lord, announced as you earn them; and a bestiary of every kind of angel you've slain, with counts. (Kills from before this update aren't in the bestiary; trophies that only need totals, like kills, levels and chests, are earned straight away.)
 - **Map** (M, or View on a controller): the whole plane, north up, with you (and your partner), the ruler, the Hellgate, the unopened chest, the objective, mission targets and angels near you.
+- **Random missions:** every new game makes its own main missions for every plane: what the angels stole (crowns, gems, seals, lanterns), who must die (captains, champion knights, high priests or demon traitors, each with a random name), what the ruler says, how many angels guard the camp and the watchpost, and how the battle goes (3 or 4 waves of different angels, 5 to 7 imps at your side). The places stay each plane's own. Games saved before this keep their old missions; start a New Game to get random ones.
 - **Hellfire bolt** (level 5): press G (Y on a controller) to hurl a ball of hellfire that bursts on whatever it hits, burning every angel close by. It costs hellfire and recharges in 1.6 seconds. Switching weapons on a controller moved to d-pad up.
 - **Five gold coins** drop from every angel (instead of 10).
 - **Save game** in the pause menu saves right away, wherever you are (the game still saves on its own too).
@@ -236,6 +237,7 @@ Player 2 arrives at your side as a demon of their own (purple, so you can tell e
 | `src/trophies.ts` | Trophies and the bestiary |
 | `src/worldMap.ts` | The full map |
 | `src/stands.ts` | The trading stands in the lair |
+| `src/missionGen.ts` | Randomly made main missions for each new game |
 | `src/mergeRig.ts` | Merges a character's boxes per limb, for fewer draw calls |
 | `src/avatar.ts` | A demon's body as the other player sees it in split screen |
 | `src/hud2.ts` | Player 2's half of the screen |
